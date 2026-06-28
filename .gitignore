@@ -1,0 +1,36 @@
+# RStudio
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+.positai
+.Renviron
+.Rapp.history
+
+# Fichiers temporaires R
+*.Rproj
+*.RData
+*.Rhistory
+*.Rapp.history
+
+# Données lourdes - À IGNORER
+donnees_satellites/
+*.tif
+*.img
+*.hdf
+*.nc
+*.grd
+*.bil
+*.sid
+
+# Shapefiles (si vous voulez les ignorer aussi)
+# shapefile_maroc/
+# *.shp
+# *.shx
+# *.dbf
+# *.prj
+
+# Fichiers système
+.DS_Store
+Thumbs.db
+*.tmp
