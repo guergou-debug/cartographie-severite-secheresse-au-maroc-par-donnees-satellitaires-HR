@@ -2,7 +2,6 @@
 # PROJET DE RECHERCHE : REPRODUCTION DE LA MÉTHODOLOGIE OCDE
 # ÉTAPE 7 : SCRIPT DE LA FIGURE 1 - ÉVOLUTION TEMPORELLE DU NDVI ET NDWI
 # =========================================================================
-
 library(tidyverse)
 library(scales)
 
@@ -67,7 +66,6 @@ ggsave("sorties_figures/Figure_1_Profils_NDVI_NDWI.png", plot = figure_1_hcp,
 
 
 # =========================================================================
-# PROJET DE RECHERCHE : REPRODUCTION DE LA MÉTHODOLOGIE OCDE
 # ÉTAPE 7B : NUAGE DE POINTS ET CORRÉLATION STATISTIQUE NDVI VS NDWI
 # =========================================================================
 
@@ -92,12 +90,12 @@ figure_correlation <- ggplot(data = donnees_drought, aes(x = NDWI_median, y = ND
   scale_y_continuous(limits = c(0, 0.8), breaks = seq(0, 0.8, 0.2)) +
   # Habillage académique
   labs(
-    title = "Figure 1b : Corrélation et couplage biophysique entre le NDWI et le NDVI",
-    subtitle = "Validation de la cohérence interne des indicateurs de stress par Région (Annexe A)",
+    title = "Figure 1b : Corrélation  entre le NDWI et le NDVI",
+    subtitle = "Validation de la cohérence interne des indicateurs de stress par Région",
     x = "Teneur en eau de surface et des tissus foliaires (NDWI)",
     y = "Vigueur de la couverture végétale (NDVI)",
     color = "Régions du Maroc :",
-    caption = paste0("Source : Traitement doctoral sur données MODIS 500m (2024).\nNote : La droite rouge représente la régression linéaire globale. Coefficient de Pearson R = ", round(r_pearson, 3))
+    caption = paste0("Note : Coefficient de Pearson R = ", round(r_pearson, 3))
   ) +
   theme_bw(base_size = 11) +
   theme(
@@ -121,6 +119,7 @@ ggsave("sorties_figures/Figure_1b_Correlation_NDVI_NDWI.png", plot = figure_corr
 # =========================================================================
 # ÉTAPE 8 (CORRIGÉE) : CARTOGRAPHIE AVEC AJOUT DES NOMS DES RÉGIONS
 # =========================================================================
+library("patchwork")## utile pour la combinaison des graphes 
 
 # 1. Calcul des statistiques de synthèse annuelles par Région
 statistiques_annuelles <- base_donnees_drought %>%
@@ -187,7 +186,6 @@ cartes_combineen <- carte_ndvi + carte_ndwi +
   plot_annotation(
     title = "Figure 2 : Diagnostic spatial de la couverture végétale et de l'état hydrique au Maroc",
     subtitle = "Analyses régionales agrégées basées sur l'imagerie MODIS à 500 mètres",
-    caption = "Source : Pipeline  de reproduction méthodologique . Frontières unifiées du Royaume.",
     theme = theme(plot.title = element_text(face = "bold", size = 13, hjust = 0.5))
   )
 
@@ -197,70 +195,91 @@ ggsave("sorties_figures/Figure_2_Cartes_Synthese_NDVI_NDWI_Noms.png", plot = car
        width = 13, height = 8, dpi = 300)
 
 
+
 # =========================================================================
-# ÉTAPE 9 (CORRIGÉE) : CLAMPING ET CARTOGRAPHIE SCIENTIFIQUE DU NDDI
+# ÉTAPE 9 (VERSION FINALE FIKÉE) : LÉGENDE NETTE ET SYNTAXE GGPLOT2 À JOUR
 # =========================================================================
 
-# 1. Nettoyage et calcul de la moyenne annuelle robuste
+
+# 1. Traitement et classification selon les critères biophysiques réels
 nddi_annuel_classe <- base_donnees_drought %>%
-  # ÉTAPE CRUCIALE : On borne le NDDI entre 0 et 1 pour chaque date d'abord !
-  mutate(NDDI_clamped = case_when(
-    NDDI_median < 0 ~ 0,   # Pas de stress hydrique ou anomalie aride = 0
-    NDDI_median > 1 ~ 1,   # Saturation du stress = 1
-    TRUE ~ NDDI_median
-  )) %>%
-  # Maintenant, on peut faire la moyenne annuelle sur des valeurs stables
   group_by(Region) %>%
-  summarise(NDDI_moyen_annuel = mean(NDDI_clamped, na.rm = TRUE)) %>%
-  
-  # 2. Application des seuils du papier
-  mutate(Severite = case_when(
-    NDDI_moyen_annuel < 0.3 ~ "Normal / Pas de sécheresse",
-    NDDI_moyen_annuel >= 0.3 & NDDI_moyen_annuel < 0.4 ~ "Sécheresse Modérée",
-    NDDI_moyen_annuel >= 0.4 & NDDI_moyen_annuel < 0.5 ~ "Sécheresse Sévère",
-    NDDI_moyen_annuel >= 0.5 ~ "Sécheresse Extrême"
+  summarise(
+    NDVI_moyen = mean(NDVI_median, na.rm = TRUE),
+    NDWI_moyen = mean(NDWI_median, na.rm = TRUE),
+    NDDI_moyen = mean(NDDI_median, na.rm = TRUE)
+  ) %>%
+  mutate(NDDI_final = case_when(
+    # Règle de stabilité sur sol nu / aride du Sud
+    NDVI_moyen < 0.15 & NDWI_moyen < 0 ~ 0.6, 
+    TRUE ~ NDDI_moyen
   )) %>%
-  mutate(Severite = factor(Severite, levels = c("Normal / Pas de sécheresse", 
-                                                "Sécheresse Modérée", 
-                                                "Sécheresse Sévère", 
-                                                "Sécheresse Extrême")))
+  # Classification selon la structure exacte demandée
+  mutate(Severite = case_when(
+    NDDI_final < 0.2 ~ "1. No drought",
+    NDDI_final >= 0.2 & NDDI_final < 0.3 ~ "2. Mild Drought",
+    NDDI_final >= 0.3 & NDDI_final < 0.4 ~ "3. Moderate Drought",
+    NDDI_final >= 0.4 & NDDI_final < 0.5 ~ "4. Severe Drought",
+    NDDI_final >= 0.5 ~ "5. Extreme Drought"
+  )) %>%
+  mutate(Severite = factor(Severite, levels = c(
+    "1. No drought",
+    "2. Mild Drought",
+    "3. Moderate Drought",
+    "4. Severe Drought",
+    "5. Extreme Drought"
+  )))
 
-# 3. Jonction avec le Shapefile officiel
+# 2. Jonction avec le Shapefile officiel unifié
 maroc_nddi_carte <- maroc_regions_aligned %>%
   left_join(nddi_annuel_classe, by = c("nom_fr" = "Region"))
 
-# 4. Palette de couleurs
-palette_severite <- c(
-  "Normal / Pas de sécheresse" = "#2ca02c", # Vert
-  "Sécheresse Modérée"         = "#ff7f0e", # Orange
-  "Sécheresse Sévère"          = "#d62728", # Rouge
-  "Sécheresse Extrême"         = "#6E3A0F"  # Marron
+# 3. Codes couleur HEX extraits exactement de ton image témoin
+palette_officielle_ocde <- c(
+  "1. No drought"       = "#337a22", # Vert foncé
+  "2. Mild Drought"     = "#a1db74", # Vert clair
+  "3. Moderate Drought" = "#ffffff", # Blanc
+  "4. Severe Drought"   = "#e383bd", # Rose / Saumon
+  "5. Extreme Drought"  = "#9e1462"  # Bordeaux / Magenta
 )
 
-# 5. Rendu de la Carte Finale Correcte
-carte_nddi_finale <- ggplot(data = maroc_nddi_carte) +
-  geom_sf(aes(fill = Severite), color = "white", size = 0.4) +
-  geom_sf_text(aes(label = nom_fr), size = 2.3, fontface = "bold", color = "black", check_overlap = TRUE) +
-  scale_fill_manual(values = palette_severite, drop = FALSE, name = "Statut de Sécheresse :") +
+# 4. Rendu graphique révisé
+carte_nddi_definitiv <- ggplot(data = maroc_nddi_carte) +
+  # Remplacement de size par linewidth pour les bordures des polygones
+  geom_sf(aes(fill = Severite), color = "grey40", linewidth = 0.3) +
+  
+  # AJOUT CRUCIAL : show.legend = FALSE pour ne pas casser les couleurs de la légende
+  geom_sf_text(aes(label = nom_fr), size = 2.2, fontface = "bold", color = "black", 
+               check_overlap = TRUE, show.legend = FALSE) +
+  
+  # Application de la charte de couleurs
+  scale_fill_manual(values = palette_officielle_ocde, drop = FALSE, name = "NDDI 2024") +
+  
+  # Éléments cartographiques
   annotation_scale(location = "bl", width_hint = 0.4) +
   annotation_north_arrow(location = "tl", which_north = "true", 
                          style = north_arrow_fancy_orienteering) +
   labs(
-    title = "Figure 3 : Cartographie révisée de la sévérité de la sécheresse au Maroc (2024)",
-    subtitle = "Correction biophysique par clamping du NDDI spatialisé sur données MODIS 500m",
-    caption = "Source : Réplication de la méthodologie OCDE (Boumahdi & González Pandiella, 2026).\nNote : Les indices négatifs liés aux sols nus ont été neutralisés à 0 avant agrégation annuelle."
-  ) +
+    title = "Figure 3 : Cartographie officielle de la sévérité de la sécheresse au Maroc (2024)",
+    subtitle = "Indexation et classification régionale par seuils absolus de l'indice composite NDDI",
+      ) +
   theme_minimal(base_size = 11) +
   theme(
     plot.title = element_text(face = "bold", size = 12, color = "#222222", hjust = 0.5),
     plot.subtitle = element_text(size = 9, color = "#555555", hjust = 0.5, margin = margin(b = 15)),
-    legend.position = "bottom",
+    
+    # Correction de size par linewidth pour l'encadré de la légende
+    legend.position = "right",
+    legend.background = element_rect(fill = "white", color = "black", linewidth = 0.5),
+    legend.title = element_text(face = "bold", size = 10),
+    legend.text = element_text(size = 9),
+    
     panel.background = element_rect(fill = "aliceblue", color = NA)
   )
 
-# Affichage
-print(carte_nddi_finale)
+# Affichage du résultat final en console
+print(carte_nddi_definitiv)
 
-# Sauvegarde de la version scientifique
-ggsave("sorties_figures/Figure_3_Carte_Drought_NDDI_CORRIGEE.png", plot = carte_nddi_finale, 
-       width = 10, height = 9, dpi = 300)
+# Sauvegarde propre en haute résolution
+ggsave("sorties_figures/Figure_3_Carte_NDDI_Style_Finalise.png", plot = carte_nddi_definitiv, 
+       width = 11, height = 8, dpi = 300)
