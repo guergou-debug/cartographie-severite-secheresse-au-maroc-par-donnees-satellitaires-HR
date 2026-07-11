@@ -69,4 +69,4 @@ install.packages(c("ggplot2", "sf", "ggspatial", "igraph", "dplyr","tidyverse", 
 🚧 Projet en cours de développement
 
 ## Auteurs
-GUERGOU Abdoul-samah et Aouissi Medard , Encadrés par M. Ilyes BOUMAHDI
+GUERGOU Abdoul-Samah et Aouissi Medard , Encadrés par M. Ilyes BOUMAHDI
