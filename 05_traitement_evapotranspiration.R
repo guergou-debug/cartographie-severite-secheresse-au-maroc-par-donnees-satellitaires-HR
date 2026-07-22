@@ -1,12 +1,6 @@
 # =========================================================================
-# ÉTAPE 12 (CORRIGÉE & SÉCURISÉE) : CALCUL DE L'ÉVAPOTRANSPIRATION (2024)
+# ÉTAPE 3:  CALCUL DE L'ÉVAPOTRANSPIRATION (2024)
 # =========================================================================
-
-library(sf)
-library(terra)
-library(tidyverse)
-library(exactextractr)
-
 # 1. Détection et chargement automatique des fichiers .tif
 # R va lister tous les fichiers se terminant par .tif dans chaque sous-dossier
 chemins_temp <- list.files(path = "Temp_2024", pattern = "\\.tif$", full.names = TRUE)
@@ -66,7 +60,7 @@ regions_finales_et <- regions_crs %>%
 
 
 # =========================================================================
-# 5. RENDU CARTOGRAPHIQUE (CORRIGÉ : LÉGENDE HORIZONTALE EN BAS)
+# 5. ÉTAPE 3:  FIGURE 9 - RENDU CARTOGRAPHIQUE 
 # =========================================================================
 
 
@@ -105,9 +99,8 @@ carte_et_2024 <- ggplot(data = regions_finales_et) +
                                     style = ggspatial::north_arrow_fancy_orienteering) +
   
   labs(
-    title = "Figure 7 : Niveaux d'évapotranspiration à travers les régions marocaines (2024)",
-    subtitle = "Modélisation spatiale de l'évapotranspiration (E) basée sur l'approche de Cárdenas-Tristán et al. (2023)",
-  ) +
+    title = " Niveaux d'évapotranspiration à travers les régions marocaines (2024)"
+    ) +
   
   theme_minimal(base_size = 11) +
   theme(

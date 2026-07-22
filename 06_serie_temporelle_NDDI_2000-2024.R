@@ -1,13 +1,8 @@
 # =========================================================================
-# PROJET SÉCHERESSE MAROC : ANALYSE DES TENDANCES HISTORIQUES (2000 - 2024)
-# REPRODUCTION DES FIGURES 8, 9 ET 10 EN FRANÇAIS
+# ÉTAPE 4:   ANALYSE DES TENDANCES HISTORIQUES (2000 - 2024)
 # =========================================================================
 
-library(tidyverse)
-library(scales)
-
 # 1. Chargement du fichier exporté depuis GEE
-# Assure-toi que le nom du fichier correspond exactement dans ton dossier de projet
 df_historique <- read_csv("Serie_Temporelle_NDDI_2000_2024_Nettoye.csv") %>%
   rename(Annee = Annee, Region = nom_fr, NDDI = mean) %>%
   filter(!is.na(Region))
@@ -17,9 +12,8 @@ df_historique <- df_historique %>%
   mutate(Region = str_trim(Region))
 
 # =========================================================================
-# FIGURE 8 CORRIGÉE : INCLUSION ET AFFICHAGE GARANTI DES 12 RÉGIONS
+# ÉTAPE 4:  FIGURE 10 -  EVOLUTION DE NDDI
 # =========================================================================
-library(ggrepel)
 
 fig_8_evolution <- ggplot(df_historique, aes(x = Annee, y = NDDI, color = Region)) +
   theme_minimal(base_size = 11) +
@@ -43,11 +37,10 @@ fig_8_evolution <- ggplot(df_historique, aes(x = Annee, y = NDDI, color = Region
   scale_x_continuous(breaks = seq(2000, 2024, by = 5), limits = c(2000, 2029)) +
   
   labs(
-    title = "Figure 8 : Évolution de la sévérité de la sécheresse par région entre 2000 et 2024",
+    title = "Évolution de la sévérité de la sécheresse par région entre 2000 et 2024",
     x = "Année",
-    y = "Indice de sécheresse (NDDI)",
-    caption = "Source : Séries temporelles d'imagerie MODIS (2000-2024) traitées sur Google Earth Engine."
-  ) +
+    y = "NDDI",
+    ) +
   theme(
     plot.title = element_text(face = "bold", size = 11, color = "#1f4e79"),
     panel.grid.minor = element_blank(),
@@ -57,7 +50,7 @@ fig_8_evolution <- ggplot(df_historique, aes(x = Annee, y = NDDI, color = Region
 print(fig_8_evolution)
 ggsave("sorties_figures/Figure_8_Evolution_Drought_Severity.png", plot = fig_8_evolution, width = 11, height = 7, dpi = 300)
 # =========================================================================
-# FIGURE 9 : PERSISTANCE ET RANGS DE VULNÉRABILITÉ (BUMP CHART)
+# ÉTAPE 4:  FIGURE 11 -  PERSISTANCE ET RANGS DE VULNÉRABILITÉ (BUMP CHART)
 # =========================================================================
 
 df_ranks <- df_historique %>%
@@ -76,7 +69,7 @@ fig_9_bump <- ggplot(df_ranks, aes(x = Annee, y = Rang_NDDI, color = Region, gro
   scale_x_continuous(breaks = seq(2000, 2024, by = 5), limits = c(1996, 2028)) +
   scale_y_continuous(breaks = 1:12, labels = 1:12) +
   labs(
-    title = "Figure 9 : Persistance de la vulnérabilité à la sécheresse à travers les régions (2000 - 2024)",
+    title = "Persistance de la vulnérabilité à la sécheresse à travers les régions (2000 - 2024)",
     x = "Année",
     y = "Classement de sévérité NDDI (Rang)",
     caption = "Note : Un rang élevé indique une exposition chronique plus intense au stress hydrique sur la période."
@@ -93,7 +86,7 @@ ggsave("sorties_figures/Figure_9_Persistence_Drought_Vulnerability.png", plot = 
 
 
 # =========================================================================
-# FIGURE 10 : DISTRIBUTION DE LA SÉVÉRITÉ PAR ANNÉE (BOXPLOT)
+# FIGURE 12 : DISTRIBUTION DE LA SÉVÉRITÉ PAR ANNÉE (BOXPLOT)
 # =========================================================================
 fig_10_boxplot <- ggplot(df_historique, aes(x = factor(Annee), y = NDDI)) +
   theme_light(base_size = 11) +
@@ -101,11 +94,9 @@ fig_10_boxplot <- ggplot(df_historique, aes(x = factor(Annee), y = NDDI)) +
   geom_boxplot(fill = "#e383bd", color = "#9e1462", alpha = 0.5, 
                outlier.color = "#9e1462", outlier.size = 2) +
   labs(
-    title = "Figure 10 : Distribution annuelle de la sévérité de la sécheresse au Maroc",
-    subtitle = "Variabilité interrégionale et identification des années de chocs climatiques extrêmes",
+    title = " Distribution annuelle de la sévérité de la sécheresse au Maroc",
     x = "Année",
-    y = "Indice de sécheresse (NDDI)",
-    caption = "Source : Analyse statistique de la dispersion spatiale sur 25 ans d'observations satellitaires."
+    y = "NDDI",
   ) +
   theme(
     plot.title = element_text(face = "bold", size = 11, color = "#1f4e79"),
@@ -120,10 +111,8 @@ ggsave("sorties_figures/Figure_10_Distribution_Drought_Severity.png", plot = fig
 
 
 # =========================================================================
-# FIGURE 11 : FRÉQUENCE ET INTENSITÉ DE LA SÉCHERESSE (2000-2024)
+# FIGURE 13 : FRÉQUENCE ET INTENSITÉ DE LA SÉCHERESSE (2000-2024)
 # =========================================================================
-
-library(patchwork)
 
 # Seuil de sécheresse calibré sur la Figure 10
 seuil_secheresse <- 7.0
@@ -170,8 +159,7 @@ p_int <- ggplot(df_metriques, aes(x = reorder(Region, -Intensite), y = Intensite
 # Combinaison des deux panels (Côte à côte comme sur le modèle)
 fig_11_combinee <- p_freq + p_int + 
   plot_annotation(
-    title = "Figure 11: Fréquence et intensité de la sécheresse au Maroc (2000-2024)",
-    caption = "Source: Calculs  basés sur les données MODIS interpolées.",
+    title = "Fréquence et intensité de la sécheresse au Maroc (2000-2024)",
     theme = theme(plot.title = element_text(face = "bold", size = 13, color = "#1f4e79", hjust = 0))
   )
 
@@ -179,9 +167,9 @@ print(fig_11_combinee)
 ggsave("sorties_figures/Figure_11_Drought_Frequency_Intensity.png", plot = fig_11_combinee, width = 12, height = 6, dpi = 300)
 
 
-# =========================================================================
-# SÉVÉRITÉ MENSUELLE DE LA SÉCHERESSE AU MAROC (2020-2024)
-# =========================================================================
+# =====================================================================================
+# ÉTAPE 4:  FIGURE 14 - SÉVÉRITÉ MENSUELLE DE LA SÉCHERESSE AU MAROC (2020-2024)
+# =====================================================================================
 
 # 1. Chargement de la data mensuelle exportée de GEE
 df_mensuel <- read_csv("Serie_Mensuelle_NDDI_2020_2024.csv") %>%
@@ -247,7 +235,7 @@ fig_12_saisonniere <- ggplot(df_final_mensuel, aes(x = Nom_Mois, y = Moyenne_Reg
   scale_y_continuous(breaks = seq(0, 12, by = 2), limits = c(0, 12.5)) +
   
   labs(
-    title = "Figure 12 : Sévérité mensuelle de la sécheresse à travers les régions marocaines (2020-2024)",
+    title = "Sévérité mensuelle de la sécheresse à travers les régions marocaines (2020-2024)",
     x = NULL,
     y = "Nombre de régions par niveau de sévérité",
     color = NULL,

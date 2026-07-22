@@ -1,12 +1,7 @@
 # =========================================================================
-# ÉTAPE 10 (SÉCURISÉE) : LAISSER R GÉRER L'ÉCHELLE & DIAGNOSTIC DES FUSIONS
+#  ÉTAPE 3:  FIGURE 5 - Severite , PIB et Population
 # =========================================================================
-
-library(tidyverse)
-library(readxl)
-library(ggrepel)
-
-# 1. Chargement et préparation des données satellites (Calcul du NDDI Révisé)
+# 1. Chargement et préparation des données satellites 
 nddi_physique <- base_donnees_drought %>%
   group_by(Region) %>%
   summarise(
@@ -19,18 +14,18 @@ nddi_physique <- base_donnees_drought %>%
     TRUE ~ NDDI_moyen
   )) %>%
   mutate(Severite = case_when(
-    NDDI_final < 0.2 ~ "1. No drought",
-    NDDI_final >= 0.2 & NDDI_final < 0.3 ~ "2. Mild Drought",
-    NDDI_final >= 0.3 & NDDI_final < 0.4 ~ "3. Moderate Drought",
-    NDDI_final >= 0.4 & NDDI_final < 0.5 ~ "4. Severe Drought",
-    NDDI_final >= 0.5 ~ "5. Extreme Drought"
+    NDDI_final < 0.2 ~ "1. Pas de sécheresse",
+    NDDI_final >= 0.2 & NDDI_final < 0.3 ~ "2. Sécheresse légère",
+    NDDI_final >= 0.3 & NDDI_final < 0.4 ~ "3. Sécheresse modérée",
+    NDDI_final >= 0.4 & NDDI_final < 0.5 ~ "4. Sécheresse sévère",
+    NDDI_final >= 0.5 ~ "5. Sécheresse extrême"
   )) %>%
   mutate(Severite = factor(Severite, levels = c(
-    "1. No drought", "2. Mild Drought", "3. Moderate Drought", "4. Severe Drought", "5. Extreme Drought"
+    "1. Pas de sécheresse", "2. Sécheresse légère", "3. Sécheresse modérée", "4. Sécheresse sévère", "5. Sécheresse extrême"
   )))
 
 # 2. Chargement de ta base de données HCP depuis Excel
-donnees_hcp <- read_excel("donnees_socio_eco_maroc.xlsx")
+donnees_hcp <- read_excel("donnees_socio_eco_maroc_HCP_2024.xlsx")
 
 # 3. Fusion avec vérification stricte
 base_impact_finale <- nddi_physique %>%
@@ -48,11 +43,11 @@ if(nrow(donnees_manquantes) > 0) {
 
 # 4. Codes couleur HEX de la charte OCDE
 palette_officielle_ocde <- c(
-  "1. No drought"       = "#337a22", 
-  "2. Mild Drought"     = "#a1db74", 
-  "3. Moderate Drought" = "#ffffff", 
-  "4. Severe Drought"   = "#e383bd", 
-  "5. Extreme Drought"  = "#9e1462"  
+  "1. Pas de sécheresse"       = "#337a22", 
+  "2. Sécheresse légère"     = "#a1db74", 
+  "3. Sécheresse modérée" = "#ffffff", 
+  "4. Sécheresse sévère"   = "#e383bd", 
+  "5. Sécheresse extrême"  = "#9e1462"  
 )
 
 # 5. Construction du Bubble Chart sans contrainte d'échelle
@@ -70,7 +65,7 @@ figure_4_impact <- ggplot(data = base_impact_finale %>% filter(!is.na(PIB_Region
                   box.padding = 0.4, point.padding = 0.3, max.overlaps = 50, show.legend = FALSE) +
   
   # Paramétrage des échelles de couleurs et de tailles
-  scale_fill_manual(values = palette_officielle_ocde, drop = FALSE, name = "Drought severity") +
+  scale_fill_manual(values = palette_officielle_ocde, drop = FALSE, name = "Sévérité de la Sécheresse") +
   scale_size_continuous(range = c(3, 15), labels = scales::label_comma(scale = 1e-6, suffix = "M"), 
                         name = "Population") +
   
@@ -80,12 +75,10 @@ figure_4_impact <- ggplot(data = base_impact_finale %>% filter(!is.na(PIB_Region
   
   # Habillage académique
   labs(
-    title = "Figure 4: Sévérité de la sécheresse par PIB et population à travers les régions marocaines (2024)",
-    subtitle = "Analyse croisée du stress de sécheresse biophysique (NDDI) et de l'exposition macroéconomique régionale",
+    title = "Sévérité de la sécheresse par PIB et population à travers les régions marocaines (2024)",
     x = "NDDI",
     y = "PIB (Prix Courant, Millions DH)",
-    caption = "Source: Basée sur les données d'imagerie MODIS 500m et les comptes régionaux HCP ."
-  ) +
+  )+
   
   # Personnalisation fine du thème
   theme(
@@ -112,7 +105,7 @@ ggsave("sorties_figures/Figure_4_Bubble_Chart_Impact_Maroc.png", plot = figure_4
 
 
 # =========================================================================
-# ÉTAPE 10 (OPTIMISÉE) : BUBBLE CHART AVEC PIB PAR HABITANT (EN FRANÇAIS)
+# ÉTAPE 3:  FIGURE 6 - BUBBLE CHART AVEC PIB PAR HABITANT 
 # =========================================================================
 
 # 5. Construction du Bubble Chart avec le PIB par Habitant sur l'axe Y
@@ -140,12 +133,10 @@ figure_4_impact_hab <- ggplot(data = base_impact_finale,
   
   # Habillage complet en français conforme à tes directives
   labs(
-    title = "Figure 4 : Sévérité de la sécheresse par PIB par habitant et population des régions (2024)",
-    subtitle = "Analyse croisée du stress biophysique (NDDI) et de l'exposition macroéconomique individuelle",
-    x = "Indice de sécheresse NDDI",
+    title = "Sévérité de la sécheresse par PIB par habitant et population des régions (2024)",
+    x = "NDDI",
     y = "PIB par habitant (Prix courants, DH)",
-    caption = "Source : Modélisation basée sur les données d'imagerie MODIS 500m et les comptes régionaux du HCP."
-  ) +
+    ) +
   
   # Personnalisation avancée de la charte graphique
   theme(
@@ -170,11 +161,9 @@ print(figure_4_impact_hab)
 ggsave("sorties_figures/Figure_4_Bubble_Chart_PIB_Habitant.png", plot = figure_4_impact_hab, 
        width = 11, height = 7, dpi = 300)
 
-# =========================================================================
-# ÉTAPE 11 : ANALYSES CROISÉES AVANCÉES DES VARIABLES SOCIO-ÉCONOMIQUES (HCP)
-# =========================================================================
-library(patchwork) # Pour combiner les graphiques si besoin
-
+# ===========================================================================================
+# ÉTAPE 3: ANALYSES CROISÉES AVANCÉES DES VARIABLES SOCIO-ÉCONOMIQUES (HCP)
+# ===========================================================================================
 
 # 3. Fusion robuste par position (Garantie 12/12 régions ajoutées)
 base_analyses_completes <- nddi_physique %>%
@@ -190,7 +179,7 @@ med_nddi <- median(base_analyses_completes$NDDI_final, na.rm = TRUE)
 med_agri <- median(base_analyses_completes$Part_Agriculture_PIB, na.rm = TRUE)
 
 # =========================================================================
-# GRAPHIQUE A : LE QUADRANT DE VULNÉRABILITÉ SECTORIELLE
+# ÉTAPE 3:  FIGURE 7 -  LE QUADRANT DE VULNÉRABILITÉ SECTORIELLE
 # =========================================================================
 fig_A_quadrant <- ggplot(base_analyses_completes, aes(x = NDDI_final, y = Part_Agriculture_PIB)) +
   theme_bw(base_size = 11) +
@@ -204,12 +193,10 @@ fig_A_quadrant <- ggplot(base_analyses_completes, aes(x = NDDI_final, y = Part_A
   annotate("text", x = med_nddi + 0.1, y = max(base_analyses_completes$Part_Agriculture_PIB) * 0.95, 
            label = "ZONE CRITIQUE\n(Fort NDDI & Forte Dépendance)", color = "red", fontface = "bold", size = 3) +
   labs(
-    title = "Figure 5 : Quadrant d'exposition sectorielle des régions marocaines",
-    subtitle = "Croisement de l'intensité de la sécheresse et de la dépendance du PIB à l'agriculture",
-    x = "Indice de sécheresse moyen (NDDI)",
-    y = "Part du secteur agricole dans le PIB régional (%)",
-    caption = "Source : Calculs basés sur MODIS 500m et la comptabilité régionale du HCP."
-  ) +
+    title = "Croisement de l'intensité de la sécheresse et de la dépendance du PIB au secteur primaire(2024)",
+    x = "NDDI",
+    y = "Part du secteur primaire dans le PIB régional (%)",
+    ) +
   theme(plot.title = element_text(face = "bold", size = 11, color = "#1f4e79"))
 
 print(fig_A_quadrant)
@@ -217,7 +204,7 @@ ggsave("sorties_figures/Figure_5_Quadrant_Vulnerabilite_Agricole.png", plot = fi
 
 
 # =========================================================================
-# GRAPHIQUE B : LE GRAPHIQUE DE DOUBLE-PEINE SOCIALE
+# ÉTAPE 3:  FIGURE 8 -  LE GRAPHIQUE DE DOUBLE-PEINE SOCIALE
 # =========================================================================
 fig_B_social <- ggplot(base_analyses_completes, aes(x = NDDI_final, y = Taux_Pauvreté_Perc, color = Taux_Chomage_Perc)) +
   theme_minimal(base_size = 11) +
@@ -227,11 +214,9 @@ fig_B_social <- ggplot(base_analyses_completes, aes(x = NDDI_final, y = Taux_Pau
   scale_color_viridis_c(option = "plasma", name = "Taux de chômage (%)") +
   scale_size_continuous(range = c(3, 12), labels = scales::label_comma(scale = 1e-6, suffix = " M"), name = "Pop. Rurale") +
   labs(
-    title = "Figure 6 : Analyse de la double-peine socio-environnementale",
-    subtitle = "Croisement du stress hydrique (NDDI) avec les taux régionaux de pauvreté et de chômage",
-    x = "Indice de sécheresse moyen (NDDI)",
+    title = "Croisement de NDDI avec les taux régionaux de pauvreté et de chômage(2024)",
+    x = "NDDI",
     y = "Taux de pauvreté multidimensionnelle ou monétaire (%)",
-    caption = "Source : Données spatiales MODIS et indicateurs sociaux du HCP."
   ) +
   theme(
     plot.title = element_text(face = "bold", size = 11, color = "#1f4e79"),
@@ -243,7 +228,7 @@ ggsave("sorties_figures/Figure_6_Double_Peine_Socio_Environnementale.png", plot 
 
 
 # =========================================================================
-# GRAPHIQUE C : DIAGRAMME DE PROFIL DE RISQUE RURAL
+#  ÉTAPE 3:  FIGURE 8 - DIAGRAMME DE PROFIL DE RISQUE RURAL
 # =========================================================================
 # Préparation des données pour le dot-plot (Normalisation temporaire pour affichage côte à côte)
 base_dotplot <- base_analyses_completes %>%
@@ -260,10 +245,9 @@ fig_C_profile <- ggplot(base_dotplot, aes(x = Valeur, y = reorder(Region, Valeur
   geom_point(aes(color = Indicateur), size = 4) +
   scale_color_manual(values = c("Stress Hydrique (NDDI)" = "#9e1462", "Part Population Rurale (%)" = "#337a22")) +
   labs(
-    title = "Figure 7 : Profil comparé d'exposition rurale et de stress hydrique",
-    subtitle = "Classement des régions selon l'alignement de la ruralité et de l'intensité du NDDI",
+    title = "Classement des régions selon l'alignement de la ruralité et de l'intensité du NDDI",
     x = "Niveau relatif / Pourcentage (%)",
-    y = "Régions du Maroc",
+    y = "Régions",
     caption = "Note : Le NDDI a été indexé sur une base 100 par rapport au maximum régional pour permettre la comparaison visuelle."
   ) +
   theme(

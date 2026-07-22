@@ -1,7 +1,7 @@
-# =========================================================================
-# PROJET DE RECHERCHE : REPRODUCTION DE LA MÉTHODOLOGIE OCDE
-# ÉTAPE 5 : CONFIGURATION DU PROJET R ET CHARGEMENT DU SHAPEFILE DU MAROC
-# =========================================================================
+# ========================================================================================
+# Stage PFA :Cartographie de la  sevérité de la secheresse au maroc par télédetection
+# ÉTAPE 0 : CONFIGURATION DU PROJET R ET CHARGEMENT DU SHAPEFILE DU MAROC
+# ========================================================================================
 
 # 1. Installation des packages essentiels (si non installés)
 packages_requis <- c("sf", "terra", "tidyverse", "tidyterra", "ggspatial", "exactextractr")
@@ -17,8 +17,16 @@ library(terra)         # Pour le traitement ultra-rapide des images rasters sate
 library(tidyverse)     # Pour la manipulation de données (dplyr) et graphiques (ggplot2)
 library(tidyterra)     # Pour la visualisation optimisée des objets spatiaux terra sous ggplot2
 library(ggspatial)     # Pour ajouter barres d'échelle et flèches de direction professionnelles
+library(exactextractr)
+library(scales)
+library(patchwork)
+library(ggspatial)
+library(ggplot2)
+library(dplyr)
+library(readxl)
+library(ggrepel)
 
-cat("--- Tous les packages scientifiques sont chargés avec succès ! ---\n")
+cat("--- Tous les packages sont chargés avec succès ! ---\n")
 
 # 3. Création de la structure des dossiers du projet
 dir.create("donnees_satellites", showWarnings = FALSE)
