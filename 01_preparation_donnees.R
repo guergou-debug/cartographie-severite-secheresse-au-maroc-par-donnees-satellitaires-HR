@@ -1,6 +1,6 @@
 # ========================================================================================
 # Stage PFA :Cartographie de la  sevérité de la secheresse au maroc par télédetection
-# ÉTAPE 0 : CONFIGURATION DU PROJET R ET CHARGEMENT DU SHAPEFILE DU MAROC
+# ÉTAPE 1 : CONFIGURATION DU PROJET R ET CHARGEMENT DU SHAPEFILE DU MAROC
 # ========================================================================================
 
 # 1. Installation des packages essentiels (si non installés)
