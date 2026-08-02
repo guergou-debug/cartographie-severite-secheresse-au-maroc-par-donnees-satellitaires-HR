@@ -1,4 +1,4 @@
-# Cartographie de la sévérite de la sechéresse au Maroc par Télédétection (2000-2024)
+# Cartographie de la sévérite de la sechéresse au Maroc par Télédétection (2000-2025)
 
 Ce dépôt héberge le code source et la méthodologie de l'application de suivi du stress hydrique au Maroc, développée dans le cadre de l'évaluation des politiques publiques. Ce projet s'appuie sur l'extraction de séries satellitaires et le calcul d'indices biophysiques pour cartographier la sévérité de la sécheresse à l'échelle régionale.
 
