@@ -1,17 +1,22 @@
 # =====================================================================================
-# NOWCASTING DU RISQUE DE SÉCHERESSE EXTRÊME (Q5) AU MAROC
-# Modèle d'alerte précoce à partir des données partielles (Janvier - Août)
+# SECTION : NOWCASTING DU RISQUE DE SÉCHERESSE EXTRÊME (Q5) AU MAROC
+# Modèle d'alerte précoce basé sur la fenêtre cumulée (Janvier à Juillet - Mois 1 à 7)
 # =====================================================================================
 
-library(tidyverse)
-library(caret)     # Pour les métriques d'évaluation (Matrice de confusion)
-
-df_mensuel <- df_raw %>%
+# -------------------------------------------------------------------------------------
+# 1. CHARGEMENT ET HARMONISATION DE LA BASE UNIFIÉE (2000 - 2026)
+# -------------------------------------------------------------------------------------
+# Lecture de la base consolidée de pas de temps 8 jours
+df_global <- read_csv("Maroc_Serie_8jours_2000_2026_Consolidee.csv") %>%
   mutate(
     year = as.numeric(year),
     month = as.numeric(month),
+    nom_fr = str_trim(nom_fr),
     nom_affich = if_else(nom_fr == "l'Oriental", "L'Oriental", nom_fr)
-  ) %>%
+  )
+
+# Agrégation au niveau mensuel (Médiane des valeurs à 8 jours)
+df_mensuel <- df_global %>%
   group_by(nom_affich, year, month) %>%
   summarise(
     NDDI = median(NDDI_median, na.rm = TRUE),
@@ -19,211 +24,36 @@ df_mensuel <- df_raw %>%
   ) %>%
   filter(!is.na(NDDI))
 
-# 2. DEFINITION DE LA RÉFÉRENCE HISTORIQUE ET DES QUINTILES ANNUELS
-# Calcul du NDDI moyen annuel par région sur toute la période
-df_annuel <- df_mensuel %>%
-  group_by(nom_affich, year) %>%
-  summarise(NDDI_annuel = mean(NDDI, na.rm = TRUE), .groups = "drop")
-
-# Calcul des seuils de quintiles sur la distribution annuelle globale
-seuils_annuels <- quantile(df_annuel$NDDI_annuel, probs = c(0, 0.2, 0.4, 0.6, 0.8, 1.0), na.rm = TRUE)
-
-# Assignation de la classe cible finale (Is_Q5 = 1 si Sécheresse Extrême)
-df_annuel_cible <- df_annuel %>%
-  mutate(
-    Classe_Finale = cut(
-      NDDI_annuel,
-      breaks = seuils_annuels,
-      include.lowest = TRUE,
-      labels = c("Q1", "Q2", "Q3", "Q4", "Q5")
-    ),
-    Is_Q5 = if_else(Classe_Finale == "Q5", 1, 0)
-  )
-
-# 3. INGÉNIERIE DES FEATURES DE NOWCASTING (FENÊTRE : JANVIER À AOÛT)
-# On simule la disponibilité des données satellitaires jusqu'en août (Mois 8)
-MOIS_NOWCAST <- 8 
-
-df_nowcast_features <- df_mensuel %>%
-  filter(month <= MOIS_NOWCAST) %>%
-  group_by(nom_affich, year) %>%
-  summarise(
-    NDDI_moy_jan_aout = mean(NDDI, na.rm = TRUE),
-    NDDI_max_jan_aout = max(NDDI, na.rm = TRUE),
-    NDDI_sd_jan_aout  = sd(NDDI, na.rm = TRUE),
-    .groups = "drop"
-  )
-
-# Fusion des features de Nowcasting avec la variable cible
-df_model <- df_nowcast_features %>%
-  left_join(df_annuel_cible %>% select(nom_affich, year, Is_Q5, Classe_Finale), 
-            by = c("nom_affich", "year")) %>%
-  mutate(
-    Is_Q5 = factor(Is_Q5, levels = c(0, 1)),
-    nom_affich = factor(nom_affich)
-  )
-
-# 4. MODÉLISATION ET VALIDATION CROISÉE / BACKTESTING (2000 - 2024)
-# On réservez les années récentes 2020-2024 pour évaluer la capacité d'anticipation
-train_data <- df_model %>% filter(year < 2020)
-test_data  <- df_model %>% filter(year >= 2020)
-
-# Modèle de régression logistique binomale pour le Nowcasting
-model_nowcast <- glm(
-  Is_Q5 ~ NDDI_moy_jan_aout + NDDI_max_jan_aout + nom_affich,
-  data = train_data,
-  family = binomial
-)
-
-# Prédiction des probabilités sur la période de test
-test_data <- test_data %>%
-  mutate(
-    Prob_Q5 = predict(model_nowcast, newdata = test_data, type = "response"),
-    Pred_Q5 = factor(if_else(Prob_Q5 >= 0.5, 1, 0), levels = c(0, 1))
-  )
-
-cat("--- MATRICE DE CONFUSION DU NOWCASTING (TEST 2020-2024) ---\n")
-conf_matrix <- confusionMatrix(test_data$Pred_Q5, test_data$Is_Q5, positive = "1")
-print(conf_matrix)
-
-# 5. NOWCASTING APPLIQUÉ AUX DONNÉES RÉCENTES (2024 / Année en cours)
-# Estimation de la probabilité de basculement en Q5 à la fin de l'année
-df_nowcast_actuel <- df_model %>%
-  filter(year == max(year)) %>%
-  mutate(
-    Prob_Basculement_Q5 = predict(model_nowcast, newdata = ., type = "response"),
-    Niveau_Risque = case_when(
-      Prob_Basculement_Q5 >= 0.75 ~ "Très Élevé (Q5 Quasi-Certain)",
-      Prob_Basculement_Q5 >= 0.50 ~ "Élevé (Risque Q5)",
-      Prob_Basculement_Q5 >= 0.25 ~ "Modéré",
-      TRUE                        ~ "Faible"
-    )
-  )
-
-# 6. VISUALISATION DES RÉSULTATS DU NOWCASTING
-fig_nowcast <- ggplot(df_nowcast_actuel, aes(x = reorder(nom_affich, Prob_Basculement_Q5), 
-                                             y = Prob_Basculement_Q5, 
-                                             fill = Prob_Basculement_Q5)) +
-  geom_col(width = 0.7) +
-  geom_hline(yintercept = 0.5, linetype = "dashed", color = "red", linewidth = 0.8) +
-  scale_fill_gradient(low = "#8ce874", high = "#702353", name = "Probabilité Q5") +
-  scale_y_continuous(labels = scales::percent_format(), limits = c(0, 1)) +
-  coord_flip() +
-  labs(
-    title = "Nowcasting du risque de sécheresse extrême (Q5) par région",
-    subtitle = "Alerte précoce basée uniquement sur les observations satellitaires de Janvier à Août",
-    x = NULL,
-    y = "Probabilité estimée de terminer l'année en Sécheresse Extrême (Q5)",
-    caption = "Ligne rouge = Seuil de décision de basculement à 50%."
-  ) +
-  theme_minimal(base_size = 11) +
-  theme(
-    plot.title = element_text(face = "bold", size = 12, color = "#1f4e79"),
-    axis.text = element_text(color = "black", size = 9),
-    panel.grid.minor = element_blank(),
-    legend.position = "right"
-  )
-
-print(fig_nowcast)
-
-
-ggsave(
-  "sorties_figures/Figure_Nowcasting_Risque_Q5.png", 
-  plot = fig_nowcast, 
-  width = 10, 
-  height = 6, 
-  dpi = 300
-)
-
-
-
-
-
-
-
-
-
-
-# =====================================================================================
-# NOWCASTING DIRECT 2026 : SÉCHERESSE EXTRÊME (Q5) AU MAROC (CORRIGÉ)
-# =====================================================================================
-
-library(tidyverse)
-
-# 1. CHARGEMENT ET HARMONISATION DE LA BASE RÉCENTE (2025 - 2026)
-# Remplace par le nom exact de ton fichier si besoin
-df_recent_raw <- read_csv("Maroc_Serie_8jours_2025_2026_Recent.csv")
-
-# Si les colonnes n'ont pas de noms standardisés, on renomme selon la structure observée
-# (nom_fr, year, month, day, date, NDDI_median)
-if (ncol(df_recent_raw) >= 6) {
-  colnames(df_recent_raw)[1:6] <- c("nom_fr", "year", "month", "day", "date", "NDDI_median")
-} else if (ncol(df_recent_raw) == 5) {
-  colnames(df_recent_raw)[1:5] <- c("nom_fr", "year", "month", "date", "NDDI_median")
-  df_recent_raw$day <- 1  # Ajout manuel si absente
-}
-
-df_recent_clean <- df_recent_raw %>%
-  mutate(
-    year        = as.numeric(year),
-    month       = as.numeric(month),
-    NDDI_median = as.numeric(NDDI_median),
-    nom_affich  = if_else(nom_fr == "l'Oriental", "L'Oriental", as.character(nom_fr))
-  ) %>%
-  filter(!is.na(NDDI_median))
-
-# 2. CHARGEMENT DE LA BASE HISTORIQUE (2000 - 2024)
-df_historique <- read_csv("Maroc_Serie_8jours_2000_2024_Clean.csv") %>%
-  mutate(
-    year        = as.numeric(year),
-    month       = as.numeric(month),
-    NDDI_median = as.numeric(NDDI_median),
-    nom_affich  = if_else(nom_fr == "l'Oriental", "L'Oriental", as.character(nom_fr))
-  )
-
-# Conserver uniquement les colonnes communes pour éviter tout conflit de types
-cols_communes <- intersect(names(df_historique), names(df_recent_clean))
-
-df_global_complet <- bind_rows(
-  select(df_historique, all_of(cols_communes)),
-  select(df_recent_clean, all_of(cols_communes))
-)
-
-# Sauvegarde de la base unifiée
-write_csv(df_global_complet, "Maroc_Serie_8jours_2000_2026_Consolidee.csv")
-message("✓ Base unifiée 2000-2026 enregistrée avec succès !")
-
-# 3. AGRÉGATION MENSUELLE & DÉTECTION DE LA DERNIÈRE OBSERVATION 2026
-df_mensuel <- df_global_complet %>%
-  group_by(nom_affich, year, month) %>%
-  summarise(
-    NDDI = median(NDDI_median, na.rm = TRUE),
-    .groups = "drop"
-  )
-
-dernier_mois_2026 <- df_mensuel %>%
+# Identification dynamique de la limite des données 2026 (Doit retourner Mois 7)
+mois_limite_2026 <- df_mensuel %>%
   filter(year == 2026) %>%
   summarise(max_m = max(month)) %>%
   pull(max_m)
 
-cat("-------------------------------------------------------------------\n")
-cat("NOWCASTING 2026 : Données disponibles de Janvier à Mois", dernier_mois_2026, "\n")
-cat("-------------------------------------------------------------------\n")
+message(sprintf("✓ Identification du signal 2026 : Données disponibles de Janvier à Mois %d", mois_limite_2026))
 
-# 4. CONSTRUCTION DU SEUIL DE RÉFÉRENCE Q5 (2000 - 2024)
+# -------------------------------------------------------------------------------------
+# 2. CONSTRUCTION DE LA VARIABLE CIBLE HISTORIQUE (QUINTILE 5 SUR 2000 - 2024)
+# -------------------------------------------------------------------------------------
+# Calcul du NDDI moyen annuel complet par région pour les années historiques
 df_annuel_hist <- df_mensuel %>%
   filter(year <= 2024) %>%
   group_by(nom_affich, year) %>%
   summarise(NDDI_annuel = mean(NDDI, na.rm = TRUE), .groups = "drop")
 
+# Définition du seuil du Quintile 5 (Top 20% des années les plus sèches)
 seuil_q5_global <- quantile(df_annuel_hist$NDDI_annuel, probs = 0.80, na.rm = TRUE)
 
+# Binarisation : 1 si l'année est en Sécheresse Extrême (Q5), 0 sinon
 df_annuel_hist <- df_annuel_hist %>%
   mutate(Is_Q5 = if_else(NDDI_annuel >= seuil_q5_global, 1, 0))
 
-# 5. FEATURES CUMULÉES SUR LA MÊME FENÊTRE (Mois 1 à dernier_mois_2026)
-df_nowcast_features <- df_mensuel %>%
-  filter(month <= dernier_mois_2026) %>%
+# -------------------------------------------------------------------------------------
+# 3. FEATURE ENGINEERING SUR LA FENÊTRE STRICTE (MOIS 1 À MOIS_LIMITE_2026)
+# -------------------------------------------------------------------------------------
+# Extraction des métriques cumulées uniquement sur les mois 1 à 7 pour TOUTES les années
+df_features_cumul <- df_mensuel %>%
+  filter(month <= mois_limite_2026) %>%
   group_by(nom_affich, year) %>%
   summarise(
     NDDI_moy_cumul = mean(NDDI, na.rm = TRUE),
@@ -231,8 +61,8 @@ df_nowcast_features <- df_mensuel %>%
     .groups = "drop"
   )
 
-# Base d'apprentissage (2000-2024)
-df_train <- df_nowcast_features %>%
+# Construction de la base d'apprentissage (2000 - 2024)
+df_train <- df_features_cumul %>%
   filter(year <= 2024) %>%
   left_join(df_annuel_hist %>% select(nom_affich, year, Is_Q5), by = c("nom_affich", "year")) %>%
   mutate(
@@ -240,13 +70,42 @@ df_train <- df_nowcast_features %>%
     nom_affich = factor(nom_affich)
   )
 
-# Base de prédiction (2026)
-df_nowcast_2026 <- df_nowcast_features %>%
+# Construction de la base de prédiction Nowcast (2026)
+df_nowcast_2026 <- df_features_cumul %>%
   filter(year == 2026) %>%
   mutate(nom_affich = factor(nom_affich))
 
-# 6. ENTRAÎNEMENT DU MODÈLE ET NOWCAST 2026
-model_logit <- glm(
+# -------------------------------------------------------------------------------------
+# 4. ENTRAÎNEMENT DU MODÈLE LOGIT ET VALIDATION PAR BACKTESTING (2020 - 2024)
+# -------------------------------------------------------------------------------------
+# Split temporel pour évaluer la capacité prédictive sans fuite de données (Data Leakage)
+train_split <- df_train %>% filter(year < 2020)
+test_split  <- df_train %>% filter(year >= 2020)
+
+# Entraînement sur la période 2000-2019
+model_eval <- glm(
+  Is_Q5 ~ NDDI_moy_cumul + NDDI_max_cumul + nom_affich,
+  data = train_split,
+  family = binomial
+)
+
+# Test sur 2020-2024
+test_split <- test_split %>%
+  mutate(
+    Prob_Q5 = predict(model_eval, newdata = test_split, type = "response"),
+    Pred_Q5 = factor(if_else(Prob_Q5 >= 0.50, 1, 0), levels = c(0, 1))
+  )
+
+cat("\n===================================================================\n")
+cat(" MATRICE DE CONFUSION DU MODÈLE DE NOWCASTING (TEST 2020-2024)\n")
+cat("===================================================================\n")
+print(confusionMatrix(test_split$Pred_Q5, test_split$Is_Q5, positive = "1"))
+
+# -------------------------------------------------------------------------------------
+# 5. NOWCASTING OFFICIEL DE L'ANNÉE 2026
+# -------------------------------------------------------------------------------------
+# Entraînement sur tout l'historique disponible (2000-2024) pour maximiser la puissance
+model_final <- glm(
   Is_Q5 ~ NDDI_moy_cumul + NDDI_max_cumul + nom_affich,
   data = df_train,
   family = binomial
@@ -254,7 +113,7 @@ model_logit <- glm(
 
 df_resultats_2026 <- df_nowcast_2026 %>%
   mutate(
-    Prob_Q5 = predict(model_logit, newdata = df_nowcast_2026, type = "response"),
+    Prob_Q5 = predict(model_final, newdata = df_nowcast_2026, type = "response"),
     Niveau_Alerte = case_when(
       Prob_Q5 >= 0.75 ~ "Très Élevé (Q5 Quasi-Certain)",
       Prob_Q5 >= 0.50 ~ "Élevé (Risque Q5)",
@@ -264,26 +123,23 @@ df_resultats_2026 <- df_nowcast_2026 %>%
   ) %>%
   arrange(desc(Prob_Q5))
 
-cat("\n=== RÉSULTATS DU NOWCASTING 2026 PAR RÉGION ===\n")
-print(df_resultats_2026 %>% select(nom_affich, NDDI_moy_cumul, Prob_Q5, Niveau_Alerte))
-
-# 7. GRAPHIQUE OFFICIEL
-fig_nowcast_2026 <- ggplot(df_resultats_2026, aes(x = reorder(nom_affich, Prob_Q5), 
-                                                  y = Prob_Q5, 
-                                                  fill = Prob_Q5)) +
+# -------------------------------------------------------------------------------------
+# 6. VISUALISATION 1 : GRAPHIQUE DES PROBABILITÉS DE NOWCASTING 2026
+# -------------------------------------------------------------------------------------
+fig_nowcast_2026 <- ggplot(df_resultats_2026, aes(x = reorder(nom_affich, Prob_Q5), y = Prob_Q5, fill = Prob_Q5)) +
   geom_col(width = 0.65) +
   geom_hline(yintercept = 0.50, linetype = "dashed", color = "#c0392b", linewidth = 0.9) +
   geom_text(aes(label = paste0(round(Prob_Q5 * 100, 1), "%")), 
             hjust = -0.15, size = 3.8, fontface = "bold") +
   scale_fill_gradient(low = "#2c6e1e", high = "#702353", name = "Probabilité Q5") +
-  scale_y_continuous(labels = scales::percent_format(), limits = c(0, 1.2)) +
+  scale_y_continuous(labels = scales::percent_format(), limits = c(0, 1.15)) +
   coord_flip() +
   labs(
     title = "Nowcasting 2026 : Estimation du risque de Sécheresse Extrême (Q5)",
-    subtitle = paste0("Alerte précoce construite sur les données MODIS jusqu au mois ", dernier_mois_2026, " (2026)"),
+    subtitle = sprintf("Alerte précoce basée sur les données MODIS de Janvier à Juillet (Mois %d)", mois_limite_2026),
     x = NULL,
-    y = "Probabilité estimée de terminer l'année en Sécheresse Extrême (Q5)",
-    caption = "Seuil d'alerte critique fixé à 50% (ligne rouge)."
+    y = "Probabilité estimée de basculement en Sécheresse Extrême (Q5)",
+    caption = "Ligne rouge pointillée = Seuil critique de décision à 50%."
   ) +
   theme_minimal(base_size = 11) +
   theme(
@@ -295,148 +151,250 @@ fig_nowcast_2026 <- ggplot(df_resultats_2026, aes(x = reorder(nom_affich, Prob_Q
   )
 
 print(fig_nowcast_2026)
+ggsave("sorties_figures/Figure_Nowcasting_2026_Officielle.png", plot = fig_nowcast_2026, width = 10, height = 6.5, dpi = 300)
 
-# Sauvegarde
-dir.create("sorties_figures", showWarnings = FALSE)
-ggsave(
-  "sorties_figures/Figure_Nowcasting_2026_Officielle.png", 
-  plot = fig_nowcast_2026, 
-  width = 10, 
-  height = 6.5, 
-  dpi = 300
-)
+# -------------------------------------------------------------------------------------
+# 7. VISUALISATION 2 : CARTOGRAPHIE SPATIALE COMPARATIVE (2025 vs 2026) - OPTIMISÉE
+# -------------------------------------------------------------------------------------
 
-
-
-# ===============================================================================
-# CARTE CÔTE-À-CÔTE : PERSPECTIVE DE SÉVÉRITÉ DU NDDI (2025 vs 2026) - ZÉRO NA
-# ===============================================================================
-
-# 1. CHARGEMENT ET HARMONISATION RIGOUREUSE
-df_global <- read_csv("Maroc_Serie_8jours_2000_2026_Consolidee.csv")
-
-# Nettoyage des chaînes de caractères pour une jointure irréprochable
-df_nowcast_cumul <- df_global %>%
-  filter(month <= 7) %>%
-  mutate(nom_fr = str_trim(nom_fr)) %>%
-  group_by(nom_fr, year) %>%
-  summarise(NDDI_final = mean(NDDI_median, na.rm = TRUE), .groups = "drop")
-
-# 2. CALCUL DES QUINTILES HISTORIQUES (2000-2024)
-q_cuts <- quantile(
-  df_nowcast_cumul %>% filter(year <= 2024) %>% pull(NDDI_final), 
-  probs = seq(0, 1, length.out = 6), 
+# Calcul des quintiles historiques sur la fenêtre Janvier-Juillet
+q_cuts_cumul <- quantile(
+  df_features_cumul %>% filter(year <= 2024) %>% pull(NDDI_moy_cumul),
+  probs = seq(0, 1, length.out = 6),
   na.rm = TRUE
 )
 
+# LABELS OPTIMISÉS : Avec retour à la ligne (\n) pour éviter d'étirer la légende en largeur
 labels_quintiles <- c(
-  sprintf("Q1 [%.2f ; %.2f[", q_cuts[1], q_cuts[2]),
-  sprintf("Q2 [%.2f ; %.2f[", q_cuts[2], q_cuts[3]),
-  sprintf("Q3 [%.2f ; %.2f[", q_cuts[3], q_cuts[4]),
-  sprintf("Q4 [%.2f ; %.2f[", q_cuts[4], q_cuts[5]),
-  sprintf("Q5 [%.2f ; %.2f]",  q_cuts[5], q_cuts[6])
+  sprintf("Q1 (Très Faible)\n[%.2f ; %.2f[", q_cuts_cumul[1], q_cuts_cumul[2]),
+  sprintf("Q2 (Faible)\n[%.2f ; %.2f[", q_cuts_cumul[2], q_cuts_cumul[3]),
+  sprintf("Q3 (Modéré)\n[%.2f ; %.2f[", q_cuts_cumul[3], q_cuts_cumul[4]),
+  sprintf("Q4 (Sévère)\n[%.2f ; %.2f[", q_cuts_cumul[4], q_cuts_cumul[5]),
+  sprintf("Q5 (Extrême)\n[%.2f ; %.2f]",  q_cuts_cumul[5], q_cuts_cumul[6])
 )
 
-# BLINDAGE MATHÉMATIQUE : On remplace le min par -Inf et le max par +Inf 
-# pour éviter tout NA si 2026 bat des records extrêmes !
-q_cuts_extension <- q_cuts
-q_cuts_extension[1] <- -Inf
-q_cuts_extension[6] <- Inf
+# Blindage aux bornes (-Inf et +Inf) pour éviter tout NA
+q_cuts_ext <- q_cuts_cumul
+q_cuts_ext[1] <- -Inf
+q_cuts_ext[6] <- Inf
 
-# Application du découpage étendu
-df_outlook_quintiles <- df_nowcast_cumul %>%
+df_map_data <- df_features_cumul %>%
   filter(year %in% c(2025, 2026)) %>%
   mutate(
     Classe_Quintile = cut(
-      NDDI_final,
-      breaks = q_cuts_extension,
+      NDDI_moy_cumul,
+      breaks = q_cuts_ext,
       include.lowest = TRUE,
       labels = labels_quintiles
     )
   )
 
-# 3. SHAPEFILE ET HARMONISATION
-maroc_regions <- st_read("shapefile_maroc/regions.shp") %>%
+# Chargement du Shapefile
+maroc_regions <- st_read("shapefile_maroc/regions.shp", quiet = TRUE) %>%
   mutate(nom_fr = str_trim(nom_fr))
 
-# VÉRIFICATION DE CORRESPONDANCE (Affiche un message d'alerte dans la console si Mismatch)
-diff_noms <- setdiff(maroc_regions$nom_fr, df_outlook_quintiles$nom_fr)
-if(length(diff_noms) > 0) {
-  warning("ATTENTION ! Des noms de régions ne matchent pas entre Shapefile et CSV : ", paste(diff_noms, collapse = ", "))
-}
+data_2025 <- df_map_data %>% filter(year == 2025)
+data_2026 <- df_map_data %>% filter(year == 2026)
 
-# 4. CRÉATION DES DEUX MAPS SÉPARÉMENT (Anti-Duplication / Anti-NA)
-data_2025 <- df_outlook_quintiles %>% filter(year == 2025)
-data_2026 <- df_outlook_quintiles %>% filter(year == 2026)
+map_2025_sf <- maroc_regions %>% left_join(data_2025, by = c("nom_fr" = "nom_affich"))
+map_2026_sf <- maroc_regions %>% left_join(data_2026, by = c("nom_fr" = "nom_affich"))
 
-carte_2025_sf <- maroc_regions %>%
-  left_join(data_2025, by = "nom_fr") %>%
-  mutate(nom_affich = if_else(nom_fr == "l'Oriental", "L'Oriental", nom_fr))
-
-carte_2026_sf <- maroc_regions %>%
-  left_join(data_2026, by = "nom_fr") %>%
-  mutate(nom_affich = if_else(nom_fr == "l'Oriental", "L'Oriental", nom_fr))
-
-# 5. PALETTE DE COULEURS HISTORIQUE (5 Quintiles)
 palette_couleurs <- setNames(
   c("#337a22", "#a1db74", "#ffffff", "#e383bd", "#9e1462"),
   labels_quintiles
 )
 
-# 6. FONCTION DE RENDU GRAPHIQUE 
-creer_carte <- function(data_sf, titre_annee) {
+# FONCTION DE RENDU REVISITÉE POUR LA LÉGENDE MUTUALISÉE
+creer_carte_nowcast <- function(data_sf, titre_annee) {
   ggplot(data = data_sf) +
-    geom_sf(aes(fill = Classe_Quintile), color = "grey40", linewidth = 0.3) +
+    geom_sf(aes(fill = Classe_Quintile), color = "grey30", linewidth = 0.35) +
     geom_sf_text(
-      aes(label = nom_affich), 
-      size = 2.0, 
+      aes(label = nom_fr), 
+      size = 2.2, 
       fontface = "bold", 
-      color = "black", 
-      check_overlap = FALSE, 
-      show.legend = FALSE
+      color = "black",
+      check_overlap = TRUE
     ) +
     scale_fill_manual(
       values = palette_couleurs, 
       drop = FALSE, 
-      na.translate = FALSE, # Bloque l'affichage explicite des NA dans la légende
-      name = "Quintiles du NDDI :",
+      na.translate = FALSE,
+      name = "Niveau de sévérité NDDI (Janvier - Juillet) :",
       guide = guide_legend(
-        direction = "horizontal", 
+        nrow = 1,                 # Tout aligner proprement ou passer à nrow = 2 si besoin
         title.position = "top", 
-        title.hjust = 0.5, 
-        nrow = 1
+        title.hjust = 0.5,
+        label.position = "bottom",
+        keywidth = unit(1.8, "cm"),
+        keyheight = unit(0.4, "cm")
       )
     ) +
-    annotation_scale(location = "br", width_hint = 0.3) +
+    annotation_scale(location = "br", width_hint = 0.25, text_size = 7) +
     annotation_north_arrow(
       location = "bl", 
-      pad_y = unit(0.4, "in"), 
+      pad_y = unit(0.2, "in"), 
+      pad_x = unit(0.2, "in"),
+      height = unit(0.8, "cm"),
+      width = unit(0.8, "cm"),
       style = north_arrow_fancy_orienteering
     ) +
     labs(title = titre_annee) +
     theme_minimal(base_size = 11) +
     theme(
-      plot.title = element_text(face = "bold", size = 12, color = "#1f4e79", hjust = 0.5),
+      plot.title = element_text(face = "bold", size = 11, color = "#1f4e79", hjust = 0.5),
       panel.background = element_rect(fill = "aliceblue", color = NA),
-      legend.position = "bottom"
+      panel.grid.major = element_line(color = "grey90", linetype = "dotted"),
+      axis.text = element_blank(), # Masque les coordonnées géographiques pour alléger l'espace
+      axis.ticks = element_blank()
     )
 }
 
-# 7. GENERATION ET ASSEMBLAGE
-p_2025 <- creer_carte(carte_2025_sf, "Sévérité du NDDI (2025)")
-p_2026 <- creer_carte(carte_2026_sf, "Perspective Nowcasting NDDI (2026)")
+p_map_2025 <- creer_carte_nowcast(map_2025_sf, "A. Sévérité observée à 7 mois (2025)")
+p_map_2026 <- creer_carte_nowcast(map_2026_sf, "B. Perspective Nowcasting à 7 mois (2026)")
 
-cartes_cote_a_cote <- (p_2025 + p_2026) +
+# COMBINAISON ET GESTION FINE DE LA LÉGENDE COMMUNE VIA PATCHWORK
+cartes_cote_a_cote <- (p_map_2025 + p_map_2026) +
   plot_layout(guides = "collect") &
-  theme(legend.position = 'bottom')
+  theme(
+    legend.position = "bottom",
+    legend.title = element_text(face = "bold", size = 10, color = "#1f4e79"),
+    legend.text = element_text(size = 8, lineheight = 0.85),
+    legend.margin = margin(t = 5, b = 5),
+    legend.background = element_rect(fill = "white", color = "grey85", linewidth = 0.3)
+  )
 
 print(cartes_cote_a_cote)
 
-# Sauvegarde
+# SAUVEGARDE AVEC HAUTEUR ET LARGEUR ADAPTÉES
 ggsave(
-  "sorties_figures/Carte_Cote_A_Cote_NDDI_2025_2026_Propre.png",
-  plot = cartes_cote_a_cote,
-  width = 14,
-  height = 8,
+  "sorties_figures/Carte_Cote_A_Cote_NDDI_2025_2026_Propre.png", 
+  plot = cartes_cote_a_cote, 
+  width = 13, 
+  height = 7.5, 
+  dpi = 300
+)
+
+
+
+
+# =====================================================================================
+# FIGURE 15 : TRAJECTOIRE MENSUELLE DES RÉGIONS DU QUINTILE 5 (COMPARAISON 2025 vs 2026)
+# =====================================================================================
+
+
+# 1. CHARGEMENT ET PRÉPARATION DES DONNÉES MENSUELLES
+df_global <- read_csv("Maroc_Serie_8jours_2000_2026_Consolidee.csv") %>%
+  mutate(
+    year = as.numeric(year),
+    month = as.numeric(month),
+    nom_fr = str_trim(nom_fr),
+    nom_affich = if_else(nom_fr == "l'Oriental", "L'Oriental", nom_fr)
+  )
+
+# Aggrégation mensuelle
+df_mensuel_regions <- df_global %>%
+  group_by(nom_affich, year, month) %>%
+  summarise(
+    NDDI = median(NDDI_median, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  filter(!is.na(NDDI))
+
+# 2. IDENTIFICATION DES RÉGIONS CLASSÉES EN Q5 (SÉCHERESSE EXTRÊME)
+# Calcul du seuil Q5 historique (2000-2024) sur les 7 premiers mois
+df_cumul_7m <- df_mensuel_regions %>%
+  filter(year <= 2024 & month <= 7) %>%
+  group_by(nom_affich, year) %>%
+  summarise(NDDI_cumul = mean(NDDI, na.rm = TRUE), .groups = "drop")
+
+# Seuil Q5 global (80ème percentile)
+seuil_q5_seuil <- quantile(df_cumul_7m$NDDI_cumul, probs = 0.80, na.rm = TRUE)
+
+# Identification des régions les plus vulnérables en 2026 (ou historiquement en Q5)
+regions_q5 <- df_mensuel_regions %>%
+  filter(year == 2026 & month <= 7) %>%
+  group_by(nom_affich) %>%
+  summarise(moy_2026 = mean(NDDI, na.rm = TRUE)) %>%
+  filter(moy_2026 >= seuil_q5_seuil) %>%
+  pull(nom_affich)
+
+# Si moins de 4 régions ressortent, on prend les Top régions les plus sèches en 2026
+if(length(regions_q5) < 4) {
+  regions_q5 <- df_mensuel_regions %>%
+    filter(year == 2026 & month <= 7) %>%
+    group_by(nom_affich) %>%
+    summarise(moy_2026 = mean(NDDI, na.rm = TRUE)) %>%
+    arrange(desc(moy_2026)) %>%
+    slice_head(n = 6) %>%
+    pull(nom_affich)
+}
+
+# 3. PREPARATION DE LA DATASTRUCTURE POUR LE PLOT (2025 ET 2026)
+df_plot_2026 <- df_mensuel_regions %>%
+  filter(nom_affich %in% regions_q5 & year == 2026 & month <= 7) %>%
+  rename(NDDI_2026 = NDDI)
+
+df_plot_2025 <- df_mensuel_regions %>%
+  filter(nom_affich %in% regions_q5 & year == 2025 & month <= 7) %>%
+  rename(NDDI_2025 = NDDI)
+
+# Fusion des deux années sur les mois 1 à 7
+df_comparaison <- df_plot_2026 %>%
+  left_join(df_plot_2025 %>% select(nom_affich, month, NDDI_2025), by = c("nom_affich", "month")) %>%
+  mutate(
+    Nom_Mois = factor(month, levels = 1:7, labels = c("Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet"))
+  )
+
+# 4. CONSTRUCTION DU RENDU VISUEL (STYLE PANDIELLA ET AL.)
+fig_15_trajectoires <- ggplot(df_comparaison, aes(x = Nom_Mois)) +
+  
+  # Barres bleues pour 2026
+  geom_col(aes(y = NDDI_2026, fill = "2026"), width = 0.55, position = position_nudge(x = 0)) +
+  
+  # Points oranges pour 2025
+  geom_point(aes(y = NDDI_2025, color = "2025"), size = 2.8, stroke = 1.1) +
+  
+  # Ligne pointillée horizontale pour le seuil de Sécheresse Extrême (Q5)
+  geom_hline(aes(yintercept = seuil_q5_seuil, linetype = "Sécheresse extrême (Q5)"), 
+             color = "#702353", linewidth = 0.8) +
+  
+  # Multi-panneaux par région
+  facet_wrap(~ nom_affich, ncol = 2, scales = "free_y") +
+  
+  # Échelles manuelles de couleurs et de légende
+  scale_fill_manual(name = NULL, values = c("2026" = "#1b4e6b")) +
+  scale_color_manual(name = NULL, values = c("2025" = "#e66101")) +
+  scale_linetype_manual(name = NULL, values = c("Sécheresse extrême (Q5)" = "dashed")) +
+  
+  labs(
+    title = "Évolution mensuelle de la sévérité de la sécheresse pour les régions les plus exposées (Q5)",
+    subtitle = "Comparaison des données de Janvier à Juillet entre 2025 et 2026",
+    x = NULL,
+    y = "Indice NDDI"
+      ) +
+  
+  theme_minimal(base_size = 11) +
+  theme(
+    plot.title = element_text(face = "bold", size = 12, color = "#1f4e79"),
+    plot.subtitle = element_text(size = 9.5, color = "grey30"),
+    strip.background = element_rect(fill = "grey95", color = "grey80"),
+    strip.text = element_text(face = "bold", size = 10, color = "#1f4e79"),
+    axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1, size = 8.5, color = "black"),
+    panel.grid.minor = element_blank(),
+    panel.grid.major.x = element_blank(),
+    panel.border = element_rect(color = "grey85", fill = NA, linewidth = 0.5),
+    legend.position = "bottom",
+    legend.box = "horizontal",
+    legend.margin = margin(t = -5)
+  )
+
+print(fig_15_trajectoires)
+
+# Sauvegarde de la figure
+ggsave(
+  "sorties_figures/Figure_15_Comparaison_Mensuelle_Q5_2025_2026.png",
+  plot = fig_15_trajectoires,
+  width = 11,
+  height = 8.5,
   dpi = 300
 )

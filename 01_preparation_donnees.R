@@ -26,6 +26,7 @@ library(dplyr)
 library(readxl)
 library(ggrepel)
 library(viridis)
+library(caret)
 
 cat("--- Tous les packages sont chargés avec succès ! ---\n")
 
