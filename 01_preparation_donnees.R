@@ -25,6 +25,7 @@ library(ggplot2)
 library(dplyr)
 library(readxl)
 library(ggrepel)
+library(viridis)
 
 cat("--- Tous les packages sont chargés avec succès ! ---\n")
 

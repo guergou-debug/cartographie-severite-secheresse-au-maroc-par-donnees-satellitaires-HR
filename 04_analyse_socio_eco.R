@@ -1,89 +1,93 @@
 # =========================================================================
-#  ÉTAPE 3:  FIGURE 5 - Severite , PIB et Population
+# ÉTAPE 3: ANALYSE SOCIO-ÉCONOMIQUE & SÉVÉRITÉ DE LA SÉCHERESSE (2024-2025)
 # =========================================================================
-# 1. Chargement et préparation des données satellites 
+
+# -------------------------------------------------------------------------
+# 1. Préparation des données satellites (NDDI 2025 BRUT & QUINTILES)
+# -------------------------------------------------------------------------
+
+# Chargement des données 2025
+base_donnees_drought <- read.csv("Maroc_Serie_8jours_2025.csv")
+
+# Correction du nom de la colonne (nom_fr -> Region) et calcul du NDDI moyen
 nddi_physique <- base_donnees_drought %>%
+  rename(Region = nom_fr) %>%  # Alignement du nom de la variable géographique
   group_by(Region) %>%
   summarise(
-    NDVI_moyen = mean(NDVI_median, na.rm = TRUE),
-    NDWI_moyen = mean(NDWI_median, na.rm = TRUE),
-    NDDI_moyen = mean(NDDI_median, na.rm = TRUE)
-  ) %>%
-  mutate(NDDI_final = case_when(
-    NDVI_moyen < 0.15 & NDWI_moyen < 0 ~ 0.6, # Stabilité biophysique des sols nus
-    TRUE ~ NDDI_moyen
-  )) %>%
-  mutate(Severite = case_when(
-    NDDI_final < 0.2 ~ "1. Pas de sécheresse",
-    NDDI_final >= 0.2 & NDDI_final < 0.3 ~ "2. Sécheresse légère",
-    NDDI_final >= 0.3 & NDDI_final < 0.4 ~ "3. Sécheresse modérée",
-    NDDI_final >= 0.4 & NDDI_final < 0.5 ~ "4. Sécheresse sévère",
-    NDDI_final >= 0.5 ~ "5. Sécheresse extrême"
-  )) %>%
-  mutate(Severite = factor(Severite, levels = c(
-    "1. Pas de sécheresse", "2. Sécheresse légère", "3. Sécheresse modérée", "4. Sécheresse sévère", "5. Sécheresse extrême"
-  )))
+    NDDI_moyen = mean(NDDI_corrige, na.rm = TRUE)
+  )
 
-# 2. Chargement de ta base de données HCP depuis Excel
+# Calcul des bornes exactes des quintiles (0%, 20%, 40%, 60%, 80%, 100%)
+bornes <- quantile(nddi_physique$NDDI_moyen, probs = seq(0, 1, 0.2), na.rm = TRUE)
+
+# Classification par quintiles avec bornes explicites
+nddi_physique <- nddi_physique %>%
+  mutate(
+    Severite_Quintile = cut(
+      NDDI_moyen,
+      breaks = bornes,
+      include.lowest = TRUE,
+      labels = c(
+        paste0("Q1 : Faible [", round(bornes[1], 2), " ; ", round(bornes[2], 2), "]"),
+        paste0("Q2 : Modérée ]", round(bornes[2], 2), " ; ", round(bornes[3], 2), "]"),
+        paste0("Q3 : Intermédiaire ]", round(bornes[3], 2), " ; ", round(bornes[4], 2), "]"),
+        paste0("Q4 : Forte ]", round(bornes[4], 2), " ; ", round(bornes[5], 2), "]"),
+        paste0("Q5 : Très forte ]", round(bornes[5], 2), " ; ", round(bornes[6], 2), "]")
+      )
+    )
+  )
+
+# -------------------------------------------------------------------------
+# 2. Chargement des données HCP 2024 et Fusion par la colonne 'Region'
+# -------------------------------------------------------------------------
+
 donnees_hcp <- read_excel("donnees_socio_eco_maroc_HCP_2024.xlsx")
 
-# 3. Fusion avec vérification stricte
+# Fusion explicite par Region
 base_impact_finale <- nddi_physique %>%
   left_join(donnees_hcp, by = "Region")
 
-# ---- BLOC DE DIAGNOSTIC AUTOMATIQUE ----
-# Ce bloc va t'afficher en console les lignes qui ont échoué à la fusion
+# Vérification du diagnostic de fusion
 donnees_manquantes <- base_impact_finale %>% filter(is.na(PIB_Regional_MDH))
 if(nrow(donnees_manquantes) > 0) {
-  cat("\n⚠️ ATTENTION : Les régions suivantes ont un problème de nom dans ton Excel :\n")
+  cat("\n⚠️ ATTENTION : Incohérence dans l'orthographe des noms de régions entre le CSV et l'Excel pour :\n")
   print(donnees_manquantes$Region)
-  cat("Vérifie leur orthographe exacte dans ton fichier Excel (accents, tirets, espaces).\n\n")
+} else {
+  cat("\n✅ Fusion réussie ! Les 12 régions sont parfaitement alignées.\n")
 }
-# ----------------------------------------
 
-# 4. Codes couleur HEX de la charte OCDE
-palette_officielle_ocde <- c(
-  "1. Pas de sécheresse"       = "#337a22", 
-  "2. Sécheresse légère"     = "#a1db74", 
-  "3. Sécheresse modérée" = "#ffffff", 
-  "4. Sécheresse sévère"   = "#e383bd", 
-  "5. Sécheresse extrême"  = "#9e1462"  
+# Config palette OCDE dynamisée
+niveaux_labels <- levels(base_impact_finale$Severite_Quintile)
+palette_officielle_ocde <- setNames(
+  c("#337a22", "#a1db74", "#ffffff", "#e383bd", "#9e1462"),
+  niveaux_labels
 )
 
-# 5. Construction du Bubble Chart sans contrainte d'échelle
-figure_4_impact <- ggplot(data = base_impact_finale %>% filter(!is.na(PIB_Regional_MDH)), 
-                          aes(x = NDDI_final, y = PIB_Regional_MDH, size = Population_Totale, fill = Severite)) +
-  
-  # Thème de base pour la grille de fond
+# =========================================================================
+# FIGURE 5 - BUBBLE CHART : NDDI VS PIB RÉGIONAL
+# =========================================================================
+
+figure_4_impact <- ggplot(
+  data = base_impact_finale %>% filter(!is.na(PIB_Regional_MDH)), 
+  aes(x = NDDI_moyen, y = PIB_Regional_MDH, size = Population_Totale, fill = Severite_Quintile)
+) +
   theme_bw(base_size = 11) +
-  
-  # Dessin des bulles
   geom_point(shape = 21, color = "black", alpha = 0.85, stroke = 0.6) +
-  
-  # Gestion dynamique des étiquettes des régions
   geom_text_repel(aes(label = Region), size = 3, fontface = "bold", color = "black",
                   box.padding = 0.4, point.padding = 0.3, max.overlaps = 50, show.legend = FALSE) +
-  
-  # Paramétrage des échelles de couleurs et de tailles
-  scale_fill_manual(values = palette_officielle_ocde, drop = FALSE, name = "Sévérité de la Sécheresse") +
-  scale_size_continuous(range = c(3, 15), labels = scales::label_comma(scale = 1e-6, suffix = "M"), 
-                        name = "Population") +
-  
-  # Échelles gérées automatiquement par R
+  scale_fill_manual(values = palette_officielle_ocde, drop = FALSE, name = "Sévérité (Quintiles NDDI)") +
+  scale_size_continuous(range = c(4, 16), labels = scales::label_comma(scale = 1e-6, suffix = " M"), name = "Population") +
   scale_y_continuous(labels = scales::label_comma(suffix = " MDH")) +
-  scale_x_continuous() + # R s'occupe de calibrer l'axe X selon les valeurs réelles
-  
-  # Habillage académique
+  scale_x_continuous() +
   labs(
-    title = "Sévérité de la sécheresse par PIB et population à travers les régions marocaines (2024)",
-    x = "NDDI",
-    y = "PIB (Prix Courant, Millions DH)",
-  )+
-  
-  # Personnalisation fine du thème
+    title = "Sévérité de la sécheresse (NDDI) par PIB et Population régionale",
+    subtitle = "Croisement NDDI 2025 (MODIS) et Données socio-économiques HCP 2024",
+    x = "Index de Sécheresse NDDI (Moyenne 2025)",
+    y = "PIB Régional (Prix Courants, Millions DH)"
+  ) +
   theme(
     plot.title = element_text(face = "bold", size = 11, color = "#1f4e79"),
-    plot.subtitle = element_text(size = 9, color = "grey40", margin = margin(b = 15)),
+    plot.subtitle = element_text(size = 9, color = "grey40", margin = margin(b = 10)),
     axis.title = element_text(face = "bold", size = 10),
     panel.grid.minor = element_blank(),
     legend.position = "right",
@@ -91,132 +95,103 @@ figure_4_impact <- ggplot(data = base_impact_finale %>% filter(!is.na(PIB_Region
     legend.title = element_text(face = "bold", size = 9),
     legend.text = element_text(size = 8)
   ) +
-  
-  # Rendre les ronds transparents dans la légende de population
-  guides(fill = guide_legend(override.aes = list(size = 4)),
-         size = guide_legend(override.aes = list(fill = "white")))
-
-# 6. Affichage immédiat
-print(figure_4_impact)
-
-# 7. Sauvegarde
-ggsave("sorties_figures/Figure_4_Bubble_Chart_Impact_Maroc.png", plot = figure_4_impact, 
-       width = 10, height = 7, dpi = 300)
-
-
-# =========================================================================
-# ÉTAPE 3:  FIGURE 6 - BUBBLE CHART AVEC PIB PAR HABITANT 
-# =========================================================================
-
-# 5. Construction du Bubble Chart avec le PIB par Habitant sur l'axe Y
-figure_4_impact_hab <- ggplot(data = base_impact_finale, 
-                              aes(x = NDDI_final, y = PIB_Par_Habitant_DH, size = Population_Totale, fill = Severite)) +
-  
-  # Thème de fond épuré
-  theme_bw(base_size = 11) +
-  
-  # Dessin des bulles (ronds noirs avec contours pour faire ressortir les bulles blanches)
-  geom_point(shape = 21, color = "black", alpha = 0.85, stroke = 0.6) +
-  
-  # Ajout des étiquettes des régions sans chevauchement
-  geom_text_repel(aes(label = Region), size = 3, fontface = "bold", color = "black",
-                  box.padding = 0.4, point.padding = 0.3, max.overlaps = 50, show.legend = FALSE) +
-  
-  # Configuration des palettes de couleurs et de l'échelle des tailles des bulles
-  scale_fill_manual(values = palette_officielle_ocde, drop = FALSE, name = "Sévérité de la sécheresse") +
-  scale_size_continuous(range = c(4, 16), labels = scales::label_comma(scale = 1e-6, suffix = " M"), 
-                        name = "Population") +
-  
-  # Formatage automatique des axes (PIB par habitant en Dirhams)
-  scale_y_continuous(labels = scales::label_comma(suffix = " DH")) +
-  scale_x_continuous() + 
-  
-  # Habillage complet en français conforme à tes directives
-  labs(
-    title = "Sévérité de la sécheresse par PIB par habitant et population des régions (2024)",
-    x = "NDDI",
-    y = "PIB par habitant (Prix courants, DH)",
-    ) +
-  
-  # Personnalisation avancée de la charte graphique
-  theme(
-    plot.title = element_text(face = "bold", size = 11, color = "#1f4e79"),
-    plot.subtitle = element_text(size = 9, color = "grey40", margin = margin(b = 15)),
-    axis.title = element_text(face = "bold", size = 10),
-    panel.grid.minor = element_blank(),
-    legend.position = "right",
-    legend.box = "vertical",
-    legend.title = element_text(face = "bold", size = 9),
-    legend.text = element_text(size = 8)
-  ) +
-  
-  # Nettoyage des fonds de bulles dans la légende pour la lisibilité
-  guides(fill = guide_legend(override.aes = list(size = 4)),
-         size = guide_legend(override.aes = list(fill = "white")))
-
-# 6. Affichage du résultat final
-print(figure_4_impact_hab)
-
-# 7. Sauvegarde dans ton dossier de sorties
-ggsave("sorties_figures/Figure_4_Bubble_Chart_PIB_Habitant.png", plot = figure_4_impact_hab, 
-       width = 11, height = 7, dpi = 300)
-
-# ===========================================================================================
-# ÉTAPE 3: ANALYSES CROISÉES AVANCÉES DES VARIABLES SOCIO-ÉCONOMIQUES (HCP)
-# ===========================================================================================
-
-# 3. Fusion robuste par position (Garantie 12/12 régions ajoutées)
-base_analyses_completes <- nddi_physique %>%
-  mutate(
-    Population_Rurale    = donnees_hcp$Population_Rurale,
-    Part_Agriculture_PIB = donnees_hcp$Part_Agriculture_PIB,
-    Taux_Pauvreté_Perc   = donnees_hcp$Taux_Pauvreté_Perc,
-    Taux_Chomage_Perc    = donnees_hcp$Taux_Chomage_Perc
+  guides(
+    fill = guide_legend(override.aes = list(size = 4)),
+    size = guide_legend(override.aes = list(fill = "white"))
   )
 
-# Calcul des médianes nationales pour les lignes de coupure des quadrants
-med_nddi <- median(base_analyses_completes$NDDI_final, na.rm = TRUE)
-med_agri <- median(base_analyses_completes$Part_Agriculture_PIB, na.rm = TRUE)
+print(figure_4_impact)
+ggsave("sorties_figures/Figure_4_Bubble_Chart_Impact_Maroc.png", plot = figure_4_impact, width = 11, height = 7, dpi = 300)
+
 
 # =========================================================================
-# ÉTAPE 3:  FIGURE 7 -  LE QUADRANT DE VULNÉRABILITÉ SECTORIELLE
+# FIGURE 6 - BUBBLE CHART : NDDI VS PIB PAR HABITANT
 # =========================================================================
-fig_A_quadrant <- ggplot(base_analyses_completes, aes(x = NDDI_final, y = Part_Agriculture_PIB)) +
+
+figure_4_impact_hab <- ggplot(
+  data = base_impact_finale %>% filter(!is.na(PIB_Par_Habitant_DH)), 
+  aes(x = NDDI_moyen, y = PIB_Par_Habitant_DH, size = Population_Totale, fill = Severite_Quintile)
+) +
   theme_bw(base_size = 11) +
-  # Lignes de démarcation des quadrants (médianes)
+  geom_point(shape = 21, color = "black", alpha = 0.85, stroke = 0.6) +
+  geom_text_repel(aes(label = Region), size = 3, fontface = "bold", color = "black",
+                  box.padding = 0.4, point.padding = 0.3, max.overlaps = 50, show.legend = FALSE) +
+  scale_fill_manual(values = palette_officielle_ocde, drop = FALSE, name = "Sévérité (Quintiles NDDI)") +
+  scale_size_continuous(range = c(4, 16), labels = scales::label_comma(scale = 1e-6, suffix = " M"), name = "Population") +
+  scale_y_continuous(labels = scales::label_comma(suffix = " DH")) +
+  scale_x_continuous() +
+  labs(
+    title = "Sévérité de la sécheresse (NDDI) par PIB par habitant et Population",
+    subtitle = "Croisement NDDI 2025 (MODIS) et Données socio-économiques HCP 2024",
+    x = "Index de Sécheresse NDDI (Moyenne 2025)",
+    y = "PIB par habitant (Prix courants, DH)"
+  ) +
+  theme(
+    plot.title = element_text(face = "bold", size = 11, color = "#1f4e79"),
+    plot.subtitle = element_text(size = 9, color = "grey40", margin = margin(b = 10)),
+    axis.title = element_text(face = "bold", size = 10),
+    panel.grid.minor = element_blank(),
+    legend.position = "right",
+    legend.box = "vertical",
+    legend.title = element_text(face = "bold", size = 9),
+    legend.text = element_text(size = 8)
+  ) +
+  guides(
+    fill = guide_legend(override.aes = list(size = 4)),
+    size = guide_legend(override.aes = list(fill = "white"))
+  )
+
+print(figure_4_impact_hab)
+ggsave("sorties_figures/Figure_4_Bubble_Chart_PIB_Habitant.png", plot = figure_4_impact_hab, width = 11, height = 7, dpi = 300)
+
+
+# =========================================================================
+# FIGURE 7 - QUADRANT DE VULNÉRABILITÉ SECTORIELLE (SECTEUR PRIMAIRE)
+# =========================================================================
+
+med_nddi <- median(base_impact_finale$NDDI_moyen, na.rm = TRUE)
+med_agri <- median(base_impact_finale$Part_Agriculture_PIB, na.rm = TRUE)
+
+fig_A_quadrant <- ggplot(base_impact_finale, aes(x = NDDI_moyen, y = Part_Agriculture_PIB)) +
+  theme_bw(base_size = 11) +
   geom_vline(xintercept = med_nddi, linetype = "dashed", color = "grey50") +
   geom_hline(yintercept = med_agri, linetype = "dashed", color = "grey50") +
-  # Points stylisés
   geom_point(color = "#1f4e79", size = 4, alpha = 0.8) +
   geom_text_repel(aes(label = Region), size = 3, fontface = "bold", max.overlaps = 50) +
-  # Annotations des quadrants
-  annotate("text", x = med_nddi + 0.1, y = max(base_analyses_completes$Part_Agriculture_PIB) * 0.95, 
-           label = "ZONE CRITIQUE\n(Fort NDDI & Forte Dépendance)", color = "red", fontface = "bold", size = 3) +
+  annotate(
+    "text", x = med_nddi + (max(base_impact_finale$NDDI_moyen) - med_nddi)/2, 
+    y = max(base_impact_finale$Part_Agriculture_PIB, na.rm = TRUE) * 0.95, 
+    label = "ZONE CRITIQUE\n(Fort NDDI & Forte Dépendance)", color = "red", fontface = "bold", size = 3
+  ) +
   labs(
-    title = "Croisement de l'intensité de la sécheresse et de la dépendance du PIB au secteur primaire(2024)",
-    x = "NDDI",
-    y = "Part du secteur primaire dans le PIB régional (%)",
-    ) +
-  theme(plot.title = element_text(face = "bold", size = 11, color = "#1f4e79"))
+    title = "Sévérité du NDDI et dépendance du PIB au secteur primaire",
+    subtitle = "Lignes pointillées = Médianes nationales",
+    x = "Index de Sécheresse NDDI (Moyenne 2025)",
+    y = "Part du secteur primaire dans le PIB régional (%)"
+  ) +
+  theme(
+    plot.title = element_text(face = "bold", size = 11, color = "#1f4e79"),
+    plot.subtitle = element_text(size = 9, color = "grey40")
+  )
 
 print(fig_A_quadrant)
 ggsave("sorties_figures/Figure_5_Quadrant_Vulnerabilite_Agricole.png", plot = fig_A_quadrant, width = 10, height = 7, dpi = 300)
 
 
 # =========================================================================
-# ÉTAPE 3:  FIGURE 8 -  LE GRAPHIQUE DE DOUBLE-PEINE SOCIALE
+# FIGURE 8 - DOUBLE-PEINE SOCIALE (PAUVRETÉ & CHÔMAGE)
 # =========================================================================
-fig_B_social <- ggplot(base_analyses_completes, aes(x = NDDI_final, y = Taux_Pauvreté_Perc, color = Taux_Chomage_Perc)) +
+
+fig_B_social <- ggplot(base_impact_finale, aes(x = NDDI_moyen, y = Taux_Pauvreté_Perc, color = Taux_Chomage_Perc)) +
   theme_minimal(base_size = 11) +
   geom_point(aes(size = Population_Rurale), alpha = 0.85) +
   geom_text_repel(aes(label = Region), size = 3, fontface = "bold", color = "black", max.overlaps = 50) +
-  # Dégradé de couleur de type "Alerte Viridis" (du bleu au jaune/rouge)
   scale_color_viridis_c(option = "plasma", name = "Taux de chômage (%)") +
   scale_size_continuous(range = c(3, 12), labels = scales::label_comma(scale = 1e-6, suffix = " M"), name = "Pop. Rurale") +
   labs(
-    title = "Croisement de NDDI avec les taux régionaux de pauvreté et de chômage(2024)",
-    x = "NDDI",
-    y = "Taux de pauvreté multidimensionnelle ou monétaire (%)",
+    title = "Sévérité de la sécheresse (NDDI) vs Pauvreté et Chômage",
+    x = "Index de Sécheresse NDDI (Moyenne 2025)",
+    y = "Taux de pauvreté (%)"
   ) +
   theme(
     plot.title = element_text(face = "bold", size = 11, color = "#1f4e79"),
@@ -228,27 +203,27 @@ ggsave("sorties_figures/Figure_6_Double_Peine_Socio_Environnementale.png", plot 
 
 
 # =========================================================================
-#  ÉTAPE 3:  FIGURE 8 - DIAGRAMME DE PROFIL DE RISQUE RURAL
+# FIGURE 9 - DIAGRAMME DE PROFIL DE RISQUE RURAL
 # =========================================================================
-# Préparation des données pour le dot-plot (Normalisation temporaire pour affichage côte à côte)
-base_dotplot <- base_analyses_completes %>%
+
+base_dotplot <- base_impact_finale %>%
   mutate(
-    `Stress Hydrique (NDDI)` = (NDDI_final / max(NDDI_final)) * 100,
-    `Part Population Rurale (%)` = (Population_Rurale / donnees_hcp$Population_Totale) * 100
+    `Stress Hydrique (NDDI Relative)` = (NDDI_moyen / max(NDDI_moyen, na.rm = TRUE)) * 100,
+    `Part Pop. Rurale (%)` = (Population_Rurale / Population_Totale) * 100
   ) %>%
-  select(Region, `Stress Hydrique (NDDI)`, `Part Population Rurale (%)`) %>%
+  select(Region, `Stress Hydrique (NDDI Relative)`, `Part Pop. Rurale (%)`) %>%
   pivot_longer(cols = -Region, names_to = "Indicateur", values_to = "Valeur")
 
 fig_C_profile <- ggplot(base_dotplot, aes(x = Valeur, y = reorder(Region, Valeur, mean))) +
   theme_linedraw(base_size = 11) +
   geom_line(aes(group = Region), color = "grey70", linewidth = 1) +
   geom_point(aes(color = Indicateur), size = 4) +
-  scale_color_manual(values = c("Stress Hydrique (NDDI)" = "#9e1462", "Part Population Rurale (%)" = "#337a22")) +
+  scale_color_manual(values = c("Stress Hydrique (NDDI Relative)" = "#9e1462", "Part Pop. Rurale (%)" = "#337a22")) +
   labs(
-    title = "Classement des régions selon l'alignement de la ruralité et de l'intensité du NDDI",
-    x = "Niveau relatif / Pourcentage (%)",
+    title = "Alignement entre l'exposition au stress hydrique et la ruralité",
+    x = "Pourcentage (%) / Indice relatif base 100",
     y = "Régions",
-    caption = "Note : Le NDDI a été indexé sur une base 100 par rapport au maximum régional pour permettre la comparaison visuelle."
+    caption = "Note : Le NDDI est indexé sur une base 100 (relativement au maximum) pour permettre la comparaison avec la part rurale."
   ) +
   theme(
     plot.title = element_text(face = "bold", size = 11, color = "#1f4e79"),
