@@ -1,0 +1,65 @@
+// IL FAUT IMPORTER TOUT D'ABORD LE SHAPEFILE DES RÉGIONS MAROCAINES
+// =========================================================================
+// EXTRACTION GEE : MODIS 8-JOURS NDDI (2025 - 2026 / NOWCASTING)
+// Utilisation de ton Shapefile régional importé dans tes Assets
+// =========================================================================
+
+// 2. Collection MODIS Surface Reflectance (MOD09A1) - 2025 à aujourd'hui (2026)
+var modis = ee.ImageCollection("MODIS/061/MOD09A1")
+              .filterDate('2025-01-01', ee.Date(Date.now()));
+
+// 3. Traitement des indices (NDVI, NDWI, NDDI)
+var addIndices = function(img) {
+  var red  = img.select('sur_refl_b01').multiply(0.0001); // Red
+  var nir  = img.select('sur_refl_b02').multiply(0.0001); // NIR
+  var swir = img.select('sur_refl_b05').multiply(0.0001); // SWIR
+  
+  var ndvi = nir.subtract(red).divide(nir.add(red)).rename('NDVI');
+  var ndwi = nir.subtract(swir).divide(nir.add(swir)).rename('NDWI');
+  var nddi = ndvi.subtract(ndwi).divide(ndvi.add(ndwi)).rename('NDDI_median');
+  
+  var date = img.date();
+  return img.addBands([ndvi, ndwi, nddi])
+            .set({
+              'year': date.get('year'),
+              'month': date.get('month'),
+              'day': date.get('day'),
+              'date_str': date.format('YYYY-MM-dd')
+            });
+};
+
+var processed = modis.map(addIndices);
+
+// 4. Réduction spatiale par polygone régional (Optimisée)
+var extractStats = processed.map(function(img) {
+  var dateStr = img.get('date_str');
+  var yr      = img.get('year');
+  var mo      = img.get('month');
+  var dy      = img.get('day');
+  
+  var stats = img.select('NDDI_median').reduceRegions({
+    collection: regions,
+    reducer: ee.Reducer.median(),
+    scale: 500
+  });
+  
+  return stats.map(function(f) {
+    return f.set({
+      // Utilise le nom de la colonne du nom de région dans ton shapefile (ex: 'nom_fr' ou 'region')
+      'nom_fr': f.get('nom_fr'), 
+      'year': yr,
+      'month': mo,
+      'day': dy,
+      'date': dateStr,
+      'NDDI_median': f.get('median')
+    });
+  });
+}).flatten();
+
+// 5. Exporter en CSV vers Google Drive
+Export.table.toDrive({
+  collection: extractStats,
+  description: 'Maroc_Serie_8jours_2025_2026_Recent',
+  fileFormat: 'CSV',
+  selectors: ['nom_fr', 'year', 'month', 'day', 'date', 'NDDI_median']
+});

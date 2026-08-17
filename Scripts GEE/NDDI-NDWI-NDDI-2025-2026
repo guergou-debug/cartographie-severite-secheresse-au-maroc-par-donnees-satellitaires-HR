@@ -1,0 +1,151 @@
+// Il faut impoter tout d abord le shapefile des regions marocaines
+// ============================================================
+// SCRIPT GEE - EXTRACTION DE LA SÉRIE 8-JOURS POUR LE MAROC
+// Version optimisée - Série temporelle uniquement
+// ============================================================
+
+// 1. IMPORTER LE SHAPEFILE DES RÉGIONS MAROCAINES
+// Assure-toi que ton import/table s'appelle 'regions_maroc'
+var regionAttr = 'nom_fr'; // Variable d'attribut pour le nom de la région
+
+print('Régions chargées :', regions_maroc);
+print('Nombre de régions :', regions_maroc.size());
+
+var nomsRegions = regions_maroc.aggregate_array(regionAttr);
+print('Noms des régions :', nomsRegions);
+
+// 2. PÉRIODE D'ÉTUDE
+var startDate = '2025-01-01';
+var endDate = '2025-12-31';
+
+// 3. COLLECTION MODIS AVEC MASQUES DE QUALITÉ
+var modisCollection = ee.ImageCollection('MODIS/061/MOD09A1')
+  .filterBounds(regions_maroc)
+  .filterDate(startDate, endDate)
+  .map(function(image) {
+    var qa = image.select('StateQA');
+    var qualityMask = qa.bitwiseAnd(3).lt(2);
+    var cloudMask = qa.bitwiseAnd(32).eq(0);
+    var shadowMask = qa.bitwiseAnd(8).eq(0);
+    var finalMask = qualityMask.and(cloudMask).and(shadowMask);
+    return image.updateMask(finalMask);
+  });
+
+print('Nombre d\'images 8-day en 2024 :', modisCollection.size());
+
+// 4. FONCTION POUR CALCULER LES INDICES
+function calculerIndices(image) {
+  var red = image.select('sur_refl_b01').multiply(0.0001);
+  var nir = image.select('sur_refl_b02').multiply(0.0001);
+  var swir = image.select('sur_refl_b06').multiply(0.0001);
+  
+  var ndvi = nir.subtract(red).divide(nir.add(red)).rename('NDVI');
+  var ndwi = nir.subtract(swir).divide(nir.add(swir)).rename('NDWI');
+  
+  // NDDI avec gestion des sols nus
+  var denominateur = ndvi.add(ndwi);
+  var masqueValide = denominateur.abs().gt(0.001);
+  
+  var nddi = ndvi.subtract(ndwi).divide(denominateur)
+    .updateMask(masqueValide)
+    .rename('NDDI');
+  
+  // Masque sols nus (NDVI < 0.1 et NDWI < -0.1) -> Exclut du calcul pour ne pas biaiser la moyenne
+  var masqueSolsNus = ndvi.lt(0.1).and(ndwi.lt(-0.1));
+  var nddiCorrige = nddi.updateMask(masqueSolsNus.not()).rename('NDDI_corrige');
+  
+  return image
+    .addBands(ndvi)
+    .addBands(ndwi)
+    .addBands(nddiCorrige)
+    .set('date', image.date().format('YYYY-MM-dd'))
+    .set('system:time_start', image.get('system:time_start'));
+}
+
+var indicesCollection = modisCollection.map(calculerIndices);
+
+// 5. LISTE DES IMAGES
+var imageList = indicesCollection.toList(indicesCollection.size());
+
+// 6 & 7. EXTRACTION DES DONNÉES SUR TOUTE LA SÉRIE (Map serveur au lieu de boucle client)
+var allFeaturesList = imageList.map(function(img) {
+  var image = ee.Image(img);
+  var date = image.get('date');
+  
+  var reduced = image.select(['NDVI', 'NDWI', 'NDDI_corrige']).reduceRegions({
+    collection: regions_maroc,
+    reducer: ee.Reducer.mean(),
+    scale: 500,
+    tileScale: 16,
+    maxPixelsPerRegion: 1e9
+  });
+  
+  return reduced.map(function(feature) {
+    return feature.set('date', date);
+  });
+});
+
+// 8. CRÉER UNE FEATURECOLLECTION FINALE
+var finalCollection = ee.FeatureCollection(allFeaturesList).flatten();
+
+// 9. EXPORT DE LA SÉRIE TEMPORELLE 8-JOURS
+Export.table.toDrive({
+  collection: finalCollection,
+  description: 'Maroc_Serie_8jours_2025',
+  folder: 'Maroc_Drought_2025',
+  fileFormat: 'CSV',
+  selectors: [regionAttr, 'date', 'NDVI', 'NDWI', 'NDDI_corrige']
+});
+
+// 10. EXPORT DES DONNÉES MENSUELLES (Moyennes mensuelles directes)
+var months = ee.List.sequence(1, 12);
+
+var monthlyFeatures = months.map(function(m) {
+  var month = ee.Number(m);
+  var startDateM = ee.Date.fromYMD(2025, month, 1);
+  var endDateM = startDateM.advance(1, 'month');
+  
+  var monthlyComposite = indicesCollection
+    .filterDate(startDateM, endDateM)
+    .select(['NDVI', 'NDWI', 'NDDI_corrige'])
+    .mean();
+    
+  var monthStr = startDateM.format('YYYY-MM');
+  
+  return monthlyComposite.reduceRegions({
+    collection: regions_maroc,
+    reducer: ee.Reducer.mean(),
+    scale: 500,
+    tileScale: 16,
+    maxPixelsPerRegion: 1e9
+  }).map(function(feat) {
+    return feat.set('mois', monthStr);
+  });
+});
+
+var monthlyCollection = ee.FeatureCollection(monthlyFeatures).flatten();
+
+Export.table.toDrive({
+  collection: monthlyCollection,
+  description: 'Maroc_NDDI_Mensuel_2025_v2',
+  folder: 'Maroc_Drought_2025',
+  fileFormat: 'CSV',
+  selectors: [regionAttr, 'mois', 'NDVI', 'NDWI', 'NDDI_corrige']
+});
+
+// 11. INFORMATIONS SUR LES EXPORTS
+print('=== INFORMATIONS SUR LES EXPORTS ===');
+print('1. Maroc_Serie_8jours_2024.csv - Série temporelle 8 jours');
+print('   - ~46 périodes × 12 régions = ~552 lignes');
+print('   - Colonnes: ' + regionAttr + ', date, NDVI, NDWI, NDDI_corrige');
+print('');
+print('2. Maroc_NDDI_Mensuel_2025_v2.csv - Moyennes mensuelles');
+print('   - 12 mois × 12 régions = 144 lignes');
+
+// 12. STATISTIQUES RAPIDES
+print('=== STATISTIQUES DES DONNÉES ===');
+print('Nombre de régions :', regions_maroc.size());
+print('Nombre d\'images 8-jours :', indicesCollection.size());
+
+print('✅ Script exécuté avec succès !');
+print('📌 Allez dans l\'onglet "Tasks" (à droite) pour lancer les 2 exports.');
