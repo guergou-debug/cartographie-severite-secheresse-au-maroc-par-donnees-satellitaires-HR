@@ -109,7 +109,7 @@ La chaîne globale peut être résumée en cinq grandes étapes :
 4. **Classification et analyse de la sévérité**
 5. **Productions finales et nowcasting 2026**
 
-![Pipeline méthodologique complet](assets/pipeline_methodologique.png)
+![Pipeline méthodologique complet](PIPELINEMETHODOLOGIQUE.png)
 
 ---
 
@@ -123,7 +123,9 @@ Le modèle de nowcasting repose sur une **régression logistique** calibrée sur
 
 ### Résultat du nowcasting à 7 mois
 
-![Nowcasting 2026 à 7 mois](assets/nowcasting_2026_7mois.png)
+![Nowcasting 2026 à 7 mois]("sorties_figures/Carte_Cote_A_Cote_NDDI_2025_2026_Propre.png")
+![Nowcasting 2026 à 7 mois]("sorties_figures/Figure_Nowcasting_2026_Officielle.png")
+
 
 À partir des données disponibles de janvier à juillet 2026, le résultat obtenu met notamment en évidence :
 
