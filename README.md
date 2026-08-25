@@ -1,7 +1,5 @@
 # Cartographie de la sévérité de la sécheresse au Maroc à l’aide des données satellitaires (2000–2026)
 
-![Pipeline méthodologique](PIPELINEMETHODOLOGIQUE.png)
-
 ## Présentation du projet
 
 Ce dépôt rassemble les codes, traitements, données préparées et productions graphiques développés dans le cadre d’une étude consacrée au **suivi, à la cartographie et à l’anticipation de la sévérité de la sécheresse au Maroc** sur la période **2000–2026**.
@@ -260,25 +258,17 @@ Le projet doit être interprété en tenant compte de plusieurs limites :
 ## Auteurs
 
 **GUERGOU GAGARA Abdoul-Samah**  
-Élève ingénieur — Institut National de Statistique et d’Économie Appliquée (INSEA), Rabat
+Élève ingénieur en Economie Appliquée Statistique et Big Data — Institut National de Statistique et d’Économie Appliquée (INSEA), Rabat
 
 **AOUISSI Saesso Medard Junior Jojo**  
-Élève ingénieur — Institut National de Statistique et d’Économie Appliquée (INSEA), Rabat
+Élève ingénieur en Biostatistique Démographie et Big Data — Institut National de Statistique et d’Économie Appliquée (INSEA), Rabat
 
 ---
 
 ## Institution d’accueil
 
 **Direction des Études et des Prévisions Financières (DEPF)**  
-**Ministère de l’Économie et des Finances — Royaume du Maroc**
-
----
-
-## Dépôt du projet
-
-Le code et les productions associées sont disponibles sur GitHub :
-
-**https://github.com/guergou-debug/cartographie-severite-secheresse-au-maroc-par-donnees-satellitaires-HR**
+**Ministère de l’Économie et des Finances de Royaume du Maroc**
 
 ---
 
