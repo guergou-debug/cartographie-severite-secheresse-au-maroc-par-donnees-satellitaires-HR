@@ -1,6 +1,6 @@
 # Cartographie de la sévérité de la sécheresse au Maroc à l’aide des données satellitaires (2000–2026)
 
-![Pipeline méthodologique](PIPELINE METHODOLOGIQUE.png)
+![Pipeline méthodologique](Data/PIPELINE METHODOLOGIQUE.png)
 
 ## Présentation du projet
 
