@@ -1,7 +1,5 @@
 # Cartographie de la sévérité de la sécheresse au Maroc à l’aide des données satellitaires (2000–2026)
 
-![Pipeline méthodologique](PIPELINEMETHODOLOGIQUE.png)
-
 ## Présentation du projet
 
 Ce dépôt rassemble les codes, traitements, données préparées et productions graphiques développés dans le cadre d’une étude consacrée au **suivi, à la cartographie et à l’anticipation de la sévérité de la sécheresse au Maroc** sur la période **2000–2026**.
@@ -109,7 +107,7 @@ La chaîne globale peut être résumée en cinq grandes étapes :
 4. **Classification et analyse de la sévérité**
 5. **Productions finales et nowcasting 2026**
 
-![Pipeline méthodologique complet](assets/pipeline_methodologique.png)
+![Pipeline méthodologique complet](PIPELINEMETHODOLOGIQUE.png)
 
 ---
 
@@ -123,7 +121,9 @@ Le modèle de nowcasting repose sur une **régression logistique** calibrée sur
 
 ### Résultat du nowcasting à 7 mois
 
-![Nowcasting 2026 à 7 mois](assets/nowcasting_2026_7mois.png)
+![Nowcasting 2026 à 7 mois](sorties_figures/Carte_Cote_A_Cote_NDDI_2025_2026_Propre.png)
+![Nowcasting 2026 à 7 mois](sorties_figures/Figure_Nowcasting_2026_Officielle.png)
+
 
 À partir des données disponibles de janvier à juillet 2026, le résultat obtenu met notamment en évidence :
 
@@ -258,25 +258,17 @@ Le projet doit être interprété en tenant compte de plusieurs limites :
 ## Auteurs
 
 **GUERGOU GAGARA Abdoul-Samah**  
-Élève ingénieur — Institut National de Statistique et d’Économie Appliquée (INSEA), Rabat
+Élève ingénieur en Economie Appliquée Statistique et Big Data — Institut National de Statistique et d’Économie Appliquée (INSEA), Rabat
 
 **AOUISSI Saesso Medard Junior Jojo**  
-Élève ingénieur — Institut National de Statistique et d’Économie Appliquée (INSEA), Rabat
+Élève ingénieur en Biostatistique Démographie et Big Data — Institut National de Statistique et d’Économie Appliquée (INSEA), Rabat
 
 ---
 
 ## Institution d’accueil
 
 **Direction des Études et des Prévisions Financières (DEPF)**  
-**Ministère de l’Économie et des Finances — Royaume du Maroc**
-
----
-
-## Dépôt du projet
-
-Le code et les productions associées sont disponibles sur GitHub :
-
-**https://github.com/guergou-debug/cartographie-severite-secheresse-au-maroc-par-donnees-satellitaires-HR**
+**Ministère de l’Économie et des Finances de Royaume du Maroc**
 
 ---
 
